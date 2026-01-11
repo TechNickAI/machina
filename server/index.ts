@@ -2,8 +2,11 @@
 /**
  * Machina MCP Gateway
  *
- * Exposes Mac capabilities via Streamable HTTP MCP transport.
+ * Exposes Mac capabilities via stateless MCP over HTTP.
  * Uses progressive disclosure pattern - one gateway tool with action/params.
+ *
+ * Stateless mode: No sessions required. Each request is independent.
+ * Simple curl testing: POST /mcp with JSON-RPC body, get JSON response.
  *
  * Environment:
  *   MACHINA_TOKEN - Required bearer token for auth
@@ -11,13 +14,11 @@
  */
 
 import express, { Request, Response, NextFunction } from "express";
-import { randomUUID } from "node:crypto";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
-  isInitializeRequest,
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -457,8 +458,27 @@ function escapeShell(str: string): string {
   return str.replace(/\$/g, "\\$").replace(/`/g, "\\`").replace(/"/g, '\\"');
 }
 
+// Ensure an app is running before AppleScript can talk to it
+async function ensureAppRunning(appName: string): Promise<void> {
+  try {
+    // Use 'open -a' which works even from background processes
+    await execAsync(`open -a "${appName}" --background`);
+    // Give the app a moment to start
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  } catch (error) {
+    // App might already be running or doesn't exist - continue anyway
+  }
+}
+
 // Run AppleScript and return result
-async function runAppleScript(script: string): Promise<string> {
+async function runAppleScript(
+  script: string,
+  appName?: string,
+): Promise<string> {
+  // If an app is specified, ensure it's running first
+  if (appName) {
+    await ensureAppRunning(appName);
+  }
   try {
     const { stdout } = await execAsync(
       `osascript -e '${script.replace(/'/g, "'\"'\"'")}'`,
@@ -511,7 +531,23 @@ async function executeOperation(
       if (!params.to) throw new Error("Missing required parameter: to");
       if (!params.message)
         throw new Error("Missing required parameter: message");
-      const escapedTo = escapeAppleScript(params.to);
+
+      const to = params.to.trim();
+
+      // Validate: must be phone number or email, not a name
+      const isPhone =
+        /^[\d\s\-\(\)\+]+$/.test(to) && to.replace(/\D/g, "").length >= 10;
+      const isEmail = to.includes("@") && to.includes(".");
+
+      if (!isPhone && !isEmail) {
+        throw new Error(
+          `Invalid 'to' format: "${to}" looks like a name, not a phone number or email. ` +
+            `Use contacts_search to look up the contact first, then use their phone number ` +
+            `(e.g., +15551234567) or email address.`,
+        );
+      }
+
+      const escapedTo = escapeAppleScript(to);
       const escapedMessage = escapeAppleScript(params.message);
       const script = `tell application "Messages"
         set targetService to 1st account whose service type = iMessage
@@ -602,7 +638,7 @@ async function executeOperation(
         end repeat
         return noteList as text
       end tell`;
-      return await runAppleScript(script);
+      return await runAppleScript(script, "Notes");
     }
 
     case "notes_read": {
@@ -616,7 +652,7 @@ async function executeOperation(
         set theNote to item 1 of matchingNotes
         return plaintext of theNote
       end tell`;
-      return await runAppleScript(script);
+      return await runAppleScript(script, "Notes");
     }
 
     case "notes_create": {
@@ -631,7 +667,7 @@ async function executeOperation(
         end tell
         return "Created note: ${escapedTitle}"
       end tell`;
-      return await runAppleScript(script);
+      return await runAppleScript(script, "Notes");
     }
 
     case "notes_search": {
@@ -651,7 +687,7 @@ async function executeOperation(
         end repeat
         return noteList as text
       end tell`;
-      return await runAppleScript(script);
+      return await runAppleScript(script, "Notes");
     }
 
     // ============== REMINDERS ==============
@@ -697,7 +733,7 @@ async function executeOperation(
           return reminderList as text
         end tell`;
       }
-      return await runAppleScript(script);
+      return await runAppleScript(script, "Reminders");
     }
 
     case "reminders_create": {
@@ -725,7 +761,7 @@ async function executeOperation(
         end tell
         return "Created reminder: ${escapedTitle}"
       end tell`;
-      return await runAppleScript(script);
+      return await runAppleScript(script, "Reminders");
     }
 
     case "reminders_complete": {
@@ -743,7 +779,7 @@ async function executeOperation(
         set completed of targetReminder to true
         return "Completed: " & name of targetReminder
       end tell`;
-      return await runAppleScript(script);
+      return await runAppleScript(script, "Reminders");
     }
 
     // ============== CONTACTS ==============
@@ -770,7 +806,7 @@ async function executeOperation(
         end repeat
         return results as text
       end tell`;
-      return await runAppleScript(script);
+      return await runAppleScript(script, "Contacts");
     }
 
     case "contacts_get": {
@@ -812,7 +848,7 @@ async function executeOperation(
 
         return contactInfo
       end tell`;
-      return await runAppleScript(script);
+      return await runAppleScript(script, "Contacts");
     }
 
     // ============== RAW APPLESCRIPT ==============
@@ -1036,8 +1072,9 @@ const tools = [
   {
     name: "machina",
     description:
-      "Access Mac capabilities: Messages (send, read, search), Notes (list, read, create), " +
-      "Reminders (list, create, complete), Contacts (search, get). " +
+      "Access the user's iCloud account on their Mac. " +
+      "This connects to a remote Mac running Machina, providing access to: " +
+      "Messages (send/read iMessages), Notes, Reminders, and Contacts. " +
       "Use action='describe' to see all operations.",
     inputSchema: {
       type: "object",
@@ -1070,16 +1107,10 @@ function authenticate(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-// Session management
-const sessions: Record<
-  string,
-  { transport: StreamableHTTPServerTransport; server: Server }
-> = {};
-
 // Create MCP server
 function createServer(): Server {
   const server = new Server(
-    { name: "machina", version: "1.4.1" },
+    { name: "machina", version: "1.5.0" },
     { capabilities: { tools: { listChanged: false } } },
   );
 
@@ -1125,84 +1156,26 @@ app.use(express.json());
 
 // Health check (no auth required)
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", version: "1.4.1" });
+  res.json({ status: "ok", version: "1.5.0" });
 });
 
-// MCP endpoint
+// MCP endpoint - stateless mode (no sessions, JSON responses)
 app.post("/mcp", authenticate, async (req: Request, res: Response) => {
-  const sessionId = req.headers["mcp-session-id"] as string | undefined;
-
   try {
-    if (sessionId && sessions[sessionId]) {
-      const { transport } = sessions[sessionId];
-      await transport.handleRequest(req, res, req.body);
-    } else if (!sessionId && isInitializeRequest(req.body)) {
-      const server = createServer();
+    const server = createServer();
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined, // Stateless - no session management
+      enableJsonResponse: true, // Return JSON instead of SSE
+    });
 
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (id) => {
-          sessions[id] = { transport, server };
-          console.log(`Session initialized: ${id}`);
-        },
-        onsessionclosed: (id) => {
-          delete sessions[id];
-          console.log(`Session closed: ${id}`);
-        },
-      });
-
-      transport.onclose = () => {
-        if (transport.sessionId) {
-          delete sessions[transport.sessionId];
-        }
-      };
-
-      await server.connect(transport);
-      await transport.handleRequest(req, res, req.body);
-    } else {
-      res.status(400).json({
-        jsonrpc: "2.0",
-        error: { code: -32000, message: "Invalid session" },
-        id: null,
-      });
-    }
+    res.on("close", () => transport.close());
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
   } catch (error) {
     console.error("MCP error:", error);
     res.status(500).json({
       jsonrpc: "2.0",
       error: { code: -32603, message: "Internal error" },
-      id: null,
-    });
-  }
-});
-
-// SSE endpoint for notifications (GET)
-app.get("/mcp", authenticate, async (req: Request, res: Response) => {
-  const sessionId = req.headers["mcp-session-id"] as string;
-  const session = sessions[sessionId];
-
-  if (session) {
-    await session.transport.handleRequest(req, res);
-  } else {
-    res.status(400).json({
-      jsonrpc: "2.0",
-      error: { code: -32000, message: "Invalid session" },
-      id: null,
-    });
-  }
-});
-
-// Session termination (DELETE)
-app.delete("/mcp", authenticate, async (req: Request, res: Response) => {
-  const sessionId = req.headers["mcp-session-id"] as string;
-  const session = sessions[sessionId];
-
-  if (session) {
-    await session.transport.handleRequest(req, res);
-  } else {
-    res.status(400).json({
-      jsonrpc: "2.0",
-      error: { code: -32000, message: "Invalid session" },
       id: null,
     });
   }
