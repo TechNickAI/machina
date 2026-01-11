@@ -90,11 +90,9 @@ Traditional installers follow deterministic steps and break on edge cases. Machi
 | Capability | Implementation                                                  | Status     |
 | ---------- | --------------------------------------------------------------- | ---------- |
 | iMessage   | Direct SQLite + AppleScript                                     | ✅ Ready   |
-| Contacts   | AppleScript                                                     | ✅ Ready   |
-| Calendar   | AppleScript                                                     | ✅ Ready   |
 | Notes      | AppleScript                                                     | ✅ Ready   |
 | Reminders  | AppleScript                                                     | ✅ Ready   |
-| Gmail      | Gmail API (via MCP-Hubby or direct)                             | 🚧 Planned |
+| Contacts   | AppleScript                                                     | ✅ Ready   |
 | WhatsApp   | [whatsapp-mcp](https://github.com/lharries/whatsapp-mcp) bridge | 🚧 Planned |
 
 All operations use the **progressive disclosure** pattern - one `machina` tool, operations discovered via `describe` action.
@@ -114,7 +112,6 @@ graph TB
 
         subgraph "macOS Apps"
             MSG[Messages]
-            CAL[Calendar]
             NOTES[Notes]
             REM[Reminders]
             CONT[Contacts]
@@ -126,7 +123,6 @@ graph TB
     GW -->|Direct SQLite| DB
     GW -->|AppleScript| AS
     AS --> MSG
-    AS --> CAL
     AS --> NOTES
     AS --> REM
     AS --> CONT
