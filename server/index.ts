@@ -32,6 +32,9 @@ if (!TOKEN) {
   process.exit(1);
 }
 
+// Concurrency guard for system_update
+let updateInProgress = false;
+
 // Operation definitions with full help metadata
 interface OperationParam {
   name: string;
@@ -820,119 +823,186 @@ async function executeOperation(
 
     // ============== SYSTEM ==============
     case "system_update": {
+      // Concurrency guard - prevent simultaneous updates
+      if (updateInProgress) {
+        return "Update already in progress. Please wait for it to complete.";
+      }
+      updateInProgress = true;
+
       const results: string[] = [];
 
-      // Get current commit
-      const { stdout: beforeCommit } = await execAsync(
-        "git rev-parse --short HEAD",
-        { cwd: process.cwd() },
-      );
-      results.push(`Before: ${beforeCommit.trim()}`);
-
-      // Fetch and check for updates
-      await execAsync("git fetch", { cwd: process.cwd() });
-      const { stdout: behind } = await execAsync(
-        "git rev-list HEAD..origin/main --count",
-        { cwd: process.cwd() },
-      );
-
-      if (behind.trim() === "0") {
-        return "Already up to date. No changes available.";
-      }
-
-      // Pull latest
-      const { stdout: pullResult } = await execAsync("git pull", {
-        cwd: process.cwd(),
-      });
-      results.push(`Pull: ${pullResult.trim()}`);
-
-      // Update dependencies
-      const { stdout: installResult } = await execAsync("bun install", {
-        cwd: process.cwd(),
-      });
-      if (installResult.trim()) {
-        results.push(`Dependencies: ${installResult.trim()}`);
-      }
-
-      // Get new commit
-      const { stdout: afterCommit } = await execAsync(
-        "git rev-parse --short HEAD",
-        { cwd: process.cwd() },
-      );
-      results.push(`After: ${afterCommit.trim()}`);
-
-      // Get changelog
-      const { stdout: changelog } = await execAsync(
-        `git log ${beforeCommit.trim()}..${afterCommit.trim()} --oneline`,
-        { cwd: process.cwd() },
-      );
-      if (changelog.trim()) {
-        results.push(`\nChanges:\n${changelog.trim()}`);
-      }
-
-      // Auto-restart: close server, spawn new, exit
-      results.push("\nRestarting server...");
-      results.push("✅ Update complete. New server starting.");
-
-      // Close server after response is sent to avoid port conflict
-      setImmediate(() => {
-        // Force close all connections (SSE, long-polling, etc) to ensure clean shutdown
-        if (httpServer.closeAllConnections) {
-          httpServer.closeAllConnections();
+      try {
+        // Check for uncommitted changes before pulling
+        const { stdout: dirtyCheck } = await execAsync(
+          "git status --porcelain",
+          {
+            cwd: process.cwd(),
+          },
+        );
+        if (dirtyCheck.trim()) {
+          updateInProgress = false;
+          return "Cannot update: uncommitted local changes detected. Commit or stash changes first.";
         }
 
-        httpServer.close(() => {
-          // Port is now released, spawn new server
-          const { spawn } = require("node:child_process");
-          const newServer = spawn("bun", ["run", "server/index.ts"], {
+        // Get current commit
+        const { stdout: beforeCommit } = await execAsync(
+          "git rev-parse --short HEAD",
+          { cwd: process.cwd() },
+        );
+        results.push(`Before: ${beforeCommit.trim()}`);
+
+        // Fetch and check for updates
+        await execAsync("git fetch", { cwd: process.cwd() });
+        const { stdout: behind } = await execAsync(
+          "git rev-list HEAD..origin/main --count",
+          { cwd: process.cwd() },
+        );
+
+        if (behind.trim() === "0") {
+          updateInProgress = false;
+          return "Already up to date. No changes available.";
+        }
+
+        // Pull latest
+        const { stdout: pullResult } = await execAsync("git pull", {
+          cwd: process.cwd(),
+        });
+        results.push(`Pull: ${pullResult.trim()}`);
+
+        // Update dependencies
+        try {
+          const { stdout: installResult } = await execAsync("bun install", {
             cwd: process.cwd(),
-            detached: true,
-            stdio: "inherit", // Show errors if spawn fails
-            env: { ...process.env },
           });
+          if (installResult.trim()) {
+            results.push(`Dependencies: ${installResult.trim()}`);
+          }
+        } catch (installErr: any) {
+          results.push(`Dependencies: WARNING - ${installErr.message}`);
+        }
 
-          // Only exit if spawn succeeds - if it fails, keep old server running
-          newServer.on("error", (err) => {
-            console.error("Failed to spawn new server:", err);
-            console.error("Keeping old server running");
-            // Don't exit - let LaunchD handle restart if needed
-          });
+        // Get new commit
+        const { stdout: afterCommit } = await execAsync(
+          "git rev-parse --short HEAD",
+          { cwd: process.cwd() },
+        );
+        results.push(`After: ${afterCommit.trim()}`);
 
-          newServer.on("spawn", () => {
-            newServer.unref();
-            process.exit(0);
+        // Validate commit hashes (prevent shell injection)
+        const commitRegex = /^[a-f0-9]+$/i;
+        if (
+          !commitRegex.test(beforeCommit.trim()) ||
+          !commitRegex.test(afterCommit.trim())
+        ) {
+          throw new Error("Invalid commit hash format");
+        }
+
+        // Get changelog using validated commits
+        const { stdout: changelog } = await execAsync(
+          `git log ${beforeCommit.trim()}..${afterCommit.trim()} --oneline`,
+          { cwd: process.cwd() },
+        );
+        if (changelog.trim()) {
+          results.push(`\nChanges:\n${changelog.trim()}`);
+        }
+
+        // Auto-restart: close server, spawn new, exit
+        results.push("\nRestarting server...");
+        results.push("✅ Update complete. New server starting.");
+
+        // Close server after response is sent to avoid port conflict
+        setImmediate(() => {
+          // Timeout to prevent hanging on close
+          const closeTimeout = setTimeout(() => {
+            console.error("Server close timed out, forcing exit");
+            process.exit(1);
+          }, 10000);
+
+          // Force close all connections (SSE, long-polling, etc)
+          if (httpServer.closeAllConnections) {
+            httpServer.closeAllConnections();
+          }
+
+          httpServer.close(() => {
+            clearTimeout(closeTimeout);
+
+            // Port is now released, spawn new server
+            const { spawn } = require("node:child_process");
+            const newServer = spawn("bun", ["run", "server/index.ts"], {
+              cwd: process.cwd(),
+              detached: true,
+              stdio: "inherit",
+              env: { ...process.env },
+            });
+
+            // Spawn timeout - if no response in 5s, exit anyway
+            const spawnTimeout = setTimeout(() => {
+              console.error("Spawn timeout - exiting to let LaunchD restart");
+              process.exit(1);
+            }, 5000);
+
+            newServer.on("error", (err: Error) => {
+              clearTimeout(spawnTimeout);
+              console.error("Failed to spawn new server:", err);
+              // Exit to let LaunchD restart - server is already closed
+              process.exit(1);
+            });
+
+            newServer.on("spawn", () => {
+              clearTimeout(spawnTimeout);
+              newServer.unref();
+              process.exit(0);
+            });
           });
         });
-      });
 
-      return results.join("\n");
+        return results.join("\n");
+      } catch (err: any) {
+        updateInProgress = false;
+        throw new Error(`Update failed: ${err.message}`);
+      }
     }
 
     case "system_status": {
-      const { stdout: commit } = await execAsync("git rev-parse --short HEAD", {
-        cwd: process.cwd(),
-      });
-      const { stdout: branch } = await execAsync(
-        "git rev-parse --abbrev-ref HEAD",
-        { cwd: process.cwd() },
-      );
+      const status: string[] = [];
 
-      // Check if behind remote
-      await execAsync("git fetch", { cwd: process.cwd() });
-      const { stdout: behind } = await execAsync(
-        "git rev-list HEAD..origin/main --count",
-        { cwd: process.cwd() },
-      );
+      try {
+        const { stdout: commit } = await execAsync(
+          "git rev-parse --short HEAD",
+          {
+            cwd: process.cwd(),
+          },
+        );
+        const { stdout: branch } = await execAsync(
+          "git rev-parse --abbrev-ref HEAD",
+          { cwd: process.cwd() },
+        );
 
-      const status = [
-        `Version: 1.0.0`,
-        `Commit: ${commit.trim()}`,
-        `Branch: ${branch.trim()}`,
-        `Updates available: ${behind.trim() === "0" ? "No" : `Yes (${behind.trim()} commits behind)`}`,
-        `Operations: ${operations.length}`,
-      ];
+        status.push(`Version: 1.1.0`);
+        status.push(`Commit: ${commit.trim()}`);
+        status.push(`Branch: ${branch.trim()}`);
 
-      return status.join("\n");
+        // Check if behind remote (optional - don't fail if network unavailable)
+        try {
+          await execAsync("git fetch", { cwd: process.cwd() });
+          const { stdout: behind } = await execAsync(
+            "git rev-list HEAD..origin/main --count",
+            { cwd: process.cwd() },
+          );
+          status.push(
+            `Updates available: ${behind.trim() === "0" ? "No" : `Yes (${behind.trim()} commits behind)`}`,
+          );
+        } catch {
+          status.push("Updates available: Unknown (network unavailable)");
+        }
+
+        status.push(`Operations: ${operations.length}`);
+        status.push(`Update in progress: ${updateInProgress ? "Yes" : "No"}`);
+
+        return status.join("\n");
+      } catch (err: any) {
+        return `Status check failed: ${err.message}`;
+      }
     }
 
     default:
