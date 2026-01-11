@@ -7,112 +7,37 @@ Automatic update of Machina knowledge repo via LaunchD schedule.
 Keep Machina current without manual intervention. Runs nightly, pulls latest knowledge,
 optionally triggers full update if changes detected.
 
-## LaunchD Job
-
-Create `~/Library/LaunchAgents/com.machina.selfupdate.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.machina.selfupdate</string>
-
-    <key>ProgramArguments</key>
-    <array>
-        <string>/bin/bash</string>
-        <string>-c</string>
-        <string>cd ~/machina && git fetch origin && git diff --quiet HEAD origin/main || claude -p 'Updates available. Run update procedure.' ~/machina</string>
-    </array>
-
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>3</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
-
-    <key>StandardOutPath</key>
-    <string>/Users/USER/machina/logs/selfupdate.log</string>
-
-    <key>StandardErrorPath</key>
-    <string>/Users/USER/machina/logs/selfupdate.error.log</string>
-</dict>
-</plist>
-```
-
 ## How It Works
 
 1. **3am daily**: LaunchD triggers the job
-2. **Fetch**: `git fetch origin` gets latest without applying
-3. **Check**: `git diff --quiet HEAD origin/main` checks for differences
+2. **Fetch**: Get latest from remote without applying
+3. **Check**: Compare local HEAD to remote
 4. **If changes**: Invoke Claude to run update
 5. **If no changes**: Exit silently
 
-## Load the Job
+## Setup
 
-```bash
-launchctl load ~/Library/LaunchAgents/com.machina.selfupdate.plist
-```
+Create a LaunchD plist `com.machina.selfupdate` that:
 
-## Test Manually
+- Runs at 3am daily (StartCalendarInterval)
+- Fetches and checks for changes
+- Invokes Claude if updates available
+- Logs to `~/machina/logs/selfupdate.log`
 
-```bash
-cd ~/machina
+## Version Checking
 
-# Check via git
-git fetch origin
-git diff --quiet HEAD origin/main && echo "No updates" || echo "Updates available"
+Can also check via GitHub Releases API - compare local VERSION file to latest release
+tag. This catches releases even if git history differs.
 
-# Or check via releases API
-LOCAL=$(cat ~/machina/VERSION)
-REMOTE=$(curl -s https://api.github.com/repos/TechNickAI/machina/releases/latest | jq -r '.tag_name | ltrimstr("v")')
-[ "$LOCAL" = "$REMOTE" ] && echo "Up to date: $LOCAL" || echo "Update available: $LOCAL -> $REMOTE"
-```
+## Alternative: Pull Only
 
-## Monitoring
-
-Check if self-update is running:
-
-```bash
-# Last update check
-ls -la ~/machina/logs/selfupdate.log
-
-# View log
-cat ~/machina/logs/selfupdate.log
-```
-
-## Disable Self-Update
-
-```bash
-launchctl unload ~/Library/LaunchAgents/com.machina.selfupdate.plist
-```
-
-## Alternative: Simple Pull Only
-
-If you prefer manual control over when Claude runs, just pull knowledge:
-
-```xml
-<key>ProgramArguments</key>
-<array>
-    <string>/bin/bash</string>
-    <string>-c</string>
-    <string>cd ~/machina && git pull origin main</string>
-</array>
-```
-
-This updates the knowledge but doesn't run Claude to apply component updates.
+For manual control over when Claude runs, just pull knowledge without invoking Claude.
 Next time user opens Claude, they see the new knowledge.
 
-## Notification on Update
+## Notification
 
-Add to the script:
+Optionally display macOS notification or notify cloud AI after successful update.
 
-```bash
-# After successful update
-osascript -e 'display notification "Machina updated to version X.Y.Z" with title "Machina"'
-```
+## Disable
 
-Or send via the gateway to notify cloud AI.
+Unload the LaunchD plist to disable scheduled updates.

@@ -3,233 +3,60 @@
 LaunchD is macOS's native service manager. We use it to auto-start Machina services on
 login and restart them if they crash.
 
-## Service Files Location
+## Services
 
-User services: `~/Library/LaunchAgents/`
+User LaunchAgents go in `~/Library/LaunchAgents/`.
 
-Machina creates these plist files:
+Machina needs these services:
 
-- `com.machina.gateway.plist` - HTTP gateway
-- `com.machina.whatsapp.plist` - WhatsApp Go bridge (if enabled)
+- **com.machina.gateway** - HTTP gateway (Bun process)
+- **com.machina.whatsapp** - WhatsApp Go bridge (if enabled)
 
 apple-mcp doesn't need its own service - the gateway imports it directly.
 
-## Gateway Service
+## Gateway Service Configuration
 
-Create `~/Library/LaunchAgents/com.machina.gateway.plist`:
+- Program: Bun running the gateway TypeScript
+- Working directory: `~/machina/components/gateway`
+- Environment: `MACHINA_TOKEN` set to the generated token
+- RunAtLoad: true (start on login)
+- KeepAlive: true (restart on crash)
+- Logs: stdout and stderr to `~/machina/logs/`
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.machina.gateway</string>
+Note: Use the actual Bun path from `which bun` (varies by install method).
 
-    <key>ProgramArguments</key>
-    <array>
-        <string>/Users/USER/.bun/bin/bun</string>
-        <string>run</string>
-        <string>/Users/USER/machina/components/gateway/src/index.ts</string>
-    </array>
+## WhatsApp Service Configuration
 
-    <key>WorkingDirectory</key>
-    <string>/Users/USER/machina/components/gateway</string>
-
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>MACHINA_TOKEN</key>
-        <string>YOUR_TOKEN_HERE</string>
-    </dict>
-
-    <key>RunAtLoad</key>
-    <true/>
-
-    <key>KeepAlive</key>
-    <true/>
-
-    <key>StandardOutPath</key>
-    <string>/Users/USER/machina/logs/gateway.log</string>
-
-    <key>StandardErrorPath</key>
-    <string>/Users/USER/machina/logs/gateway.error.log</string>
-</dict>
-</plist>
-```
-
-**Important**: Replace `USER` with actual username and `YOUR_TOKEN_HERE` with the
-generated token.
-
-## WhatsApp Bridge Service
-
-Create `~/Library/LaunchAgents/com.machina.whatsapp.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.machina.whatsapp</string>
-
-    <key>ProgramArguments</key>
-    <array>
-        <string>/Users/USER/machina/components/whatsapp-mcp/whatsapp-bridge/whatsapp-bridge</string>
-        <string>--port</string>
-        <string>3001</string>
-    </array>
-
-    <key>WorkingDirectory</key>
-    <string>/Users/USER/machina/components/whatsapp-mcp/whatsapp-bridge</string>
-
-    <key>RunAtLoad</key>
-    <true/>
-
-    <key>KeepAlive</key>
-    <true/>
-
-    <key>StandardOutPath</key>
-    <string>/Users/USER/machina/logs/whatsapp.log</string>
-
-    <key>StandardErrorPath</key>
-    <string>/Users/USER/machina/logs/whatsapp.error.log</string>
-</dict>
-</plist>
-```
-
-## Loading Services
-
-After creating plist files:
-
-```bash
-# Load gateway
-launchctl load ~/Library/LaunchAgents/com.machina.gateway.plist
-
-# Load WhatsApp (if enabled)
-launchctl load ~/Library/LaunchAgents/com.machina.whatsapp.plist
-```
+- Program: The compiled Go binary with `--port 3001`
+- Working directory: `~/machina/components/whatsapp-mcp/whatsapp-bridge`
+- RunAtLoad: true
+- KeepAlive: true
+- Logs: to `~/machina/logs/`
 
 ## Managing Services
 
-### Check Status
+Load services to start them. Unload to stop. Services auto-restart on crash due to
+KeepAlive. Check status by listing LaunchD jobs filtered for "machina".
 
-```bash
-launchctl list | grep machina
-```
+## Key Settings
 
-Shows PID if running, `-` if not.
-
-### Stop Service
-
-```bash
-launchctl stop com.machina.gateway
-```
-
-### Start Service
-
-```bash
-launchctl start com.machina.gateway
-```
-
-### Unload (Disable)
-
-```bash
-launchctl unload ~/Library/LaunchAgents/com.machina.gateway.plist
-```
-
-### Reload After Changes
-
-```bash
-launchctl unload ~/Library/LaunchAgents/com.machina.gateway.plist
-launchctl load ~/Library/LaunchAgents/com.machina.gateway.plist
-```
-
-## Viewing Logs
-
-```bash
-# Gateway logs
-tail -f ~/machina/logs/gateway.log
-
-# WhatsApp logs
-tail -f ~/machina/logs/whatsapp.log
-
-# Error logs
-tail -f ~/machina/logs/gateway.error.log
-```
-
-## Key Settings Explained
-
-### RunAtLoad
-
-`<true/>` means service starts when user logs in. Set to `<false/>` for manual start
-only.
-
-### KeepAlive
-
-`<true/>` means LaunchD restarts the service if it crashes. Essential for reliability.
-
-Can also be conditional:
-
-```xml
-<key>KeepAlive</key>
-<dict>
-    <key>SuccessfulExit</key>
-    <false/>
-</dict>
-```
-
-This restarts only on non-zero exit (crash), not clean shutdown.
-
-### WorkingDirectory
-
-Must be set so relative paths in the service work correctly.
-
-### EnvironmentVariables
-
-Secrets like tokens can be set here. They're only readable by the user.
+- **RunAtLoad**: Start when user logs in
+- **KeepAlive**: Restart if process exits
+- **WorkingDirectory**: Set so relative paths work
+- **EnvironmentVariables**: For tokens and config
 
 ## Troubleshooting
 
 ### Service won't start
 
-Check log files for errors:
+Check error logs in `~/machina/logs/`. Common issues: wrong path to binary, missing
+environment variables, permission denied.
 
-```bash
-cat ~/machina/logs/gateway.error.log
-```
+### Restart loop
 
-Common issues:
-
-- Wrong path to bun or binary
-- Missing environment variables
-- Permission denied
-
-### Service keeps restarting
-
-If KeepAlive causes restart loop:
-
-1. Check logs for crash reason
-2. Temporarily unload: `launchctl unload ...`
-3. Fix the issue
-4. Reload
+KeepAlive causes infinite restarts if the process keeps crashing. Unload the service,
+check logs, fix the issue, reload.
 
 ### "Service already loaded"
 
-```bash
-launchctl unload ~/Library/LaunchAgents/com.machina.gateway.plist 2>/dev/null
-launchctl load ~/Library/LaunchAgents/com.machina.gateway.plist
-```
-
-### Finding the Bun Path
-
-```bash
-which bun
-```
-
-Common locations:
-
-- Homebrew install: `/opt/homebrew/bin/bun`
-- Direct install: `/Users/USER/.bun/bin/bun`
-
-**Claude should run `which bun` and use the actual path returned.** The plist template
-uses a placeholder - always replace with the real path from `which bun`.
+Unload before loading again to reload configuration changes.

@@ -4,183 +4,75 @@ After installation, verify each component works correctly.
 
 ## Quick Health Check
 
-```bash
-# Gateway responding?
-curl http://localhost:8080/health
-
-# Expected:
-# {"status":"ok","timestamp":"..."}
-```
+Hit the gateway health endpoint. Should return `{ "status": "ok" }`.
 
 If this fails, check:
 
-1. Gateway service running: `launchctl list | grep machina`
-2. Logs: `tail ~/machina/logs/gateway.error.log`
+1. Gateway service running (check LaunchD status)
+2. Error logs in `~/machina/logs/`
 
-## Full Verification Checklist
+## Full Verification
 
-### 1. Gateway API
+### Gateway API
 
-```bash
-# Load token
-source ~/machina/config/.env
+Test the describe action with the Bearer token. Should return list of available services.
 
-# Test describe action
-curl -X POST http://localhost:8080/api/machina \
-  -H "Authorization: Bearer $MACHINA_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"action": "describe"}'
-```
+### Apple Services
 
-**Expected**: JSON listing available services
+Run AppleScript to list items from each app:
 
-**If fails**:
+- Messages: list chats
+- Contacts: list people
+- Calendar: list calendars
+- Mail: list accounts
+- Notes: list notes
+- Reminders: list reminder lists
 
-- Check token is correct
-- Check gateway logs
+Success: returns data without "not authorized" errors.
 
-### 2. Apple Services (iMessage, etc.)
+### Send Test iMessage
 
-Test each capability via AppleScript:
+**Warning**: This sends a real message.
 
-```bash
-# Messages - list chats
-osascript -e 'tell application "Messages" to get name of every chat'
+Use the API to send a test message to yourself or a known contact.
 
-# Contacts - list names
-osascript -e 'tell application "Contacts" to get name of first person'
+### WhatsApp (if enabled)
 
-# Calendar - list calendars
-osascript -e 'tell application "Calendar" to get name of every calendar'
+Check the Go bridge is running. Logs should show "Connected" or similar.
 
-# Mail - list accounts
-osascript -e 'tell application "Mail" to get name of every account'
+If not connected, may need to re-authenticate with QR code.
 
-# Notes - list notes
-osascript -e 'tell application "Notes" to get name of first note'
+### Remote Access (if Tailscale enabled)
 
-# Reminders - list lists
-osascript -e 'tell application "Reminders" to get name of every list'
-```
+From another device on your Tailscale network, hit the health endpoint using the
+Mac's Tailscale IP.
 
-**If fails with "Not authorized"**:
+### Auto-Restart
 
-- Grant Automation permission in System Preferences
+Kill the gateway process. Wait a few seconds. It should auto-restart (KeepAlive).
 
-### 3. Send Test iMessage
+### Boot Persistence
 
-**Warning**: This sends a real message!
+Log out and back in (or restart). Services should start automatically.
 
-```bash
-# Test via API (when gateway handlers are implemented)
-curl -X POST http://localhost:8080/api/machina \
-  -H "Authorization: Bearer $MACHINA_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"action": "messages.send", "params": {"to": "YOUR_PHONE", "body": "Test from Machina"}}'
-```
-
-Or via AppleScript directly:
-
-```bash
-osascript -e 'tell application "Messages"
-  set targetService to 1st service whose service type = iMessage
-  set targetBuddy to buddy "+1YOUR_NUMBER" of targetService
-  send "Test from Machina" to targetBuddy
-end tell'
-```
-
-### 4. WhatsApp (if enabled)
-
-```bash
-# Check Go bridge is running
-launchctl list | grep whatsapp
-
-# Check bridge log for "Connected" message
-tail ~/machina/logs/whatsapp.log
-```
-
-**If not connected**:
-
-- May need to re-authenticate with QR code
-- Check `~/machina/components/whatsapp-mcp/whatsapp-bridge/store/` exists
-
-### 5. Remote Access (if Tailscale enabled)
-
-From another device on your Tailscale network:
-
-```bash
-# Get your Mac's Tailscale IP
-tailscale ip -4
-
-# Test from another device
-curl http://YOUR_TAILSCALE_IP:8080/health
-```
-
-### 6. Auto-Restart Test
-
-Simulate crash and verify recovery:
-
-```bash
-# Kill gateway
-pkill -f "bun.*gateway"
-
-# Wait 5 seconds
-sleep 5
-
-# Check if restarted
-curl http://localhost:8080/health
-```
-
-**Expected**: Gateway should auto-restart (KeepAlive)
-
-### 7. Boot Persistence Test
-
-```bash
-# Logout and login again
-# Or restart Mac
-
-# After login, check services
-launchctl list | grep machina
-curl http://localhost:8080/health
-```
-
-**Expected**: Services running without manual intervention
-
-## Verification Summary
-
-| Check    | Command                                   | Expected              |
-| -------- | ----------------------------------------- | --------------------- |
-| Health   | `curl localhost:8080/health`              | `{"status":"ok",...}` |
-| Token    | `curl -H "Authorization: Bearer xxx" ...` | Service list          |
-| Messages | `osascript -e 'tell app "Messages"...'`   | No error              |
-| Contacts | `osascript -e 'tell app "Contacts"...'`   | Contact list          |
-| WhatsApp | `tail ~/machina/logs/whatsapp.log`        | "Connected"           |
-| Remote   | `curl TAILSCALE_IP:8080/health`           | `{"status":"ok",...}` |
-| Restart  | Kill and wait                             | Auto-recovers         |
-| Boot     | Restart Mac                               | Services running      |
-
-## What Success Looks Like
+## Success Criteria
 
 When fully working:
 
-1. `launchctl list | grep machina` shows both services with PIDs
-2. `curl localhost:8080/health` returns OK
+1. LaunchD shows machina services with PIDs
+2. Health endpoint returns OK
 3. API requests with correct token return expected data
 4. Services restart automatically after crash
 5. Services start automatically after login
 6. Remote devices can reach via Tailscale
 
-## Report Issues
+## Troubleshooting
 
-If verification fails, gather:
+If verification fails:
 
-1. Which step failed
-2. Exact error message
-3. Contents of `~/machina/logs/*.error.log`
-4. Output of `launchctl list | grep machina`
-5. macOS version: `sw_vers`
+1. Which step failed?
+2. What's the exact error?
+3. What do the logs say?
+4. Is the service running?
 
-Then either:
-
-- Check `../maintenance/troubleshooting.md`
-- Open issue at https://github.com/TechNickAI/machina/issues
+See `../maintenance/troubleshooting.md` for common issues.

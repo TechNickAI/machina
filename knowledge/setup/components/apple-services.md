@@ -1,160 +1,57 @@
-# Apple Services Setup (apple-mcp)
+# Apple Services (apple-mcp)
 
-This component provides access to native Apple apps: Messages, Mail, Calendar, Notes,
-Reminders, Contacts, and Maps.
+Access to native Apple apps via AppleScript.
 
 ## Source
 
-Repository: https://github.com/TechNickAI/apple-mcp (forked from supermemoryai)
+Repository: `TechNickAI/apple-mcp` (forked from supermemoryai)
 Location: `~/machina/components/apple-mcp`
-Status: Archived (stable, complete)
+
+## Capabilities
+
+- **Messages**: Send, read, schedule iMessage
+- **Mail**: Send, search, read emails
+- **Calendar**: Create, search, list events
+- **Notes**: Create, search, list notes
+- **Reminders**: Create, list, search reminders
+- **Contacts**: Search, lookup contacts
 
 ## Installation
 
-```bash
-cd ~/machina/components/apple-mcp
-bun install
-```
+Clone the repo. Install dependencies with Bun. Verify build succeeds.
 
-## Configuration
-
-apple-mcp works out of the box. No configuration file needed.
-
-## Testing Each Capability
-
-### Messages (iMessage)
-
-**Test read**:
-
-```bash
-cd ~/machina/components/apple-mcp
-bun run test:messages
-```
-
-Or manually via AppleScript:
-
-```bash
-osascript -e 'tell application "Messages" to get name of every chat'
-```
-
-**Expected**: List of chat names (or empty if no chats)
-
-**Common issues**:
-
-- "Not authorized to send Apple events": Grant Automation permission
-- Empty result: Make sure Messages app has been opened at least once
-
-### Contacts
-
-**Test**:
-
-```bash
-osascript -e 'tell application "Contacts" to get name of every person'
-```
-
-**Expected**: List of contact names
-
-### Calendar
-
-**Test**:
-
-```bash
-osascript -e 'tell application "Calendar" to get name of every calendar'
-```
-
-**Expected**: List of calendar names
-
-### Mail
-
-**Test**:
-
-```bash
-osascript -e 'tell application "Mail" to get name of every account'
-```
-
-**Expected**: List of email account names
-
-### Notes
-
-**Test**:
-
-```bash
-osascript -e 'tell application "Notes" to get name of every note'
-```
-
-**Expected**: List of note titles
-
-### Reminders
-
-**Test**:
-
-```bash
-osascript -e 'tell application "Reminders" to get name of every list'
-```
-
-**Expected**: List of reminder list names
+No configuration needed - works out of the box.
 
 ## Permissions Required
 
-1. **Automation**: Allow terminal to control each app
-   - First AppleScript call will prompt
-   - Or: System Preferences → Privacy & Security → Automation
+1. **Automation**: Terminal must be allowed to control each app. First AppleScript call
+   triggers a permission prompt.
 
-2. **Full Disk Access** (optional but recommended):
-   - Enables direct SQLite access for faster queries
-   - Required for reading ~/Library/Messages/chat.db
+2. **Full Disk Access** (recommended): Enables direct SQLite access for faster queries.
+   Required for reading `~/Library/Messages/chat.db`.
 
-## Running as Service
+## Testing
 
-apple-mcp runs as a Bun process. For production, use LaunchD (see `../04-launchd.md`).
+Test each capability by running AppleScript to list items from each app (chats, contacts,
+calendars, mail accounts, notes, reminder lists).
 
-**Manual start for testing**:
+Success: lists return without "not authorized" errors.
 
-```bash
-cd ~/machina/components/apple-mcp
-bun run start
-```
+## Integration
 
-## Integration with Gateway
-
-The gateway imports apple-mcp utilities directly:
-
-```typescript
-import { sendMessage } from "../apple-mcp/utils/messages";
-import { searchContacts } from "../apple-mcp/utils/contacts";
-```
-
-See `gateway.md` for how the gateway routes requests to apple-mcp.
+The gateway imports apple-mcp utilities directly. See `gateway.md`.
 
 ## Troubleshooting
 
 ### "Not authorized to send Apple events"
 
-1. Open System Preferences → Privacy & Security → Automation
-2. Find Terminal (or Claude Desktop)
-3. Enable checkboxes for Messages, Mail, Calendar, etc.
+Automation permission not granted. Check System Preferences → Privacy & Security →
+Automation.
 
 ### AppleScript timeout
 
-Some operations are slow (especially first run). apple-mcp has built-in timeouts:
-
-- Default: 30 seconds per operation
-- Can be slow if app hasn't been opened recently
-
-**Fix**: Open the app manually once, then try again.
-
-### "No such file or directory" for database
-
-If accessing ~/Library/Messages/chat.db fails:
-
-1. Grant Full Disk Access to Terminal
-2. Close and reopen Terminal
-3. Try again
+Some operations are slow on first run. Open the target app manually first.
 
 ### Messages not sending
 
-Verify:
-
-1. iMessage is enabled in Messages → Preferences → iMessage
-2. You're signed into iCloud
-3. The recipient is a valid iMessage recipient (try sending manually first)
+Verify iMessage is enabled and you're signed into iCloud.

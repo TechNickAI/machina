@@ -1,31 +1,20 @@
 # Machina Updates
 
-This folder contains procedures for updating Machina and its components.
+Procedures for updating Machina and its components.
 
 ## Update Types
 
-| Type           | Trigger              | What Updates                     |
-| -------------- | -------------------- | -------------------------------- |
-| **Local**      | User runs Claude     | Knowledge + components           |
-| **Remote**     | API call from cloud  | Same as local                    |
-| **Self**       | Scheduled job        | Knowledge repo only              |
-| **Components** | Part of local/remote | apple-mcp, whatsapp-mcp, gateway |
+| Type       | Trigger             | What Updates           |
+| ---------- | ------------------- | ---------------------- |
+| **Local**  | User runs Claude    | Knowledge + components |
+| **Remote** | API call from cloud | Same as local          |
+| **Self**   | Scheduled job       | Knowledge repo only    |
 
-## Quick Update (Local)
+## Quick Update
 
-```bash
-cd ~/machina && claude
-```
+Open Claude Code in ~/machina and say "Update machina"
 
-Tell Claude: **"Update machina"**
-
-Claude will:
-
-1. Pull latest knowledge repo
-2. Pull latest component repos
-3. Rebuild if needed
-4. Restart services
-5. Verify everything works
+Claude will pull latest, rebuild components, restart services, verify.
 
 ## Update Procedures
 
@@ -35,32 +24,10 @@ Claude will:
 
 ## Version Checking
 
-**Current version:**
+Current version is in `~/machina/VERSION`.
 
-```bash
-cat ~/machina/VERSION
-```
-
-**Check for updates via GitHub Releases API:**
-
-```bash
-LOCAL=$(cat ~/machina/VERSION)
-REMOTE=$(curl -s https://api.github.com/repos/TechNickAI/machina/releases/latest | jq -r '.tag_name | ltrimstr("v")')
-
-if [ "$LOCAL" != "$REMOTE" ]; then
-  echo "Update available: $LOCAL -> $REMOTE"
-else
-  echo "Up to date: $LOCAL"
-fi
-```
-
-**View release notes for latest:**
-
-```bash
-gh release view --repo TechNickAI/machina
-```
+Check for updates via GitHub Releases API - compare local version to latest release tag.
 
 ## Release History
 
-See [GitHub Releases](https://github.com/TechNickAI/machina/releases) for full
-changelog and release notes.
+See [GitHub Releases](https://github.com/TechNickAI/machina/releases) for changelog.

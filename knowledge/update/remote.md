@@ -8,93 +8,36 @@ Carmenta (or another cloud AI) triggers update on remote Mac without user presen
 
 ## Trigger
 
-POST request to gateway:
-
-```bash
-curl -X POST http://MAC_TAILSCALE_IP:8080/api/machina \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"action": "system.update"}'
-```
+POST to gateway with action `system.update`.
 
 ## Implementation
 
-Gateway handles `system.update` action by invoking Claude:
+Gateway handles `system.update` by spawning Claude to run the local update procedure.
 
-```typescript
-async function handleSystemUpdate() {
-  // Spawn Claude to run update
-  const result = await Bun.spawn([
-    "claude",
-    "-p",
-    "Run update procedure per knowledge/update/local.md",
-    "/Users/USER/machina",
-  ]);
+Security considerations:
 
-  // Wait for completion
-  await result.exited;
-
-  // Return result
-  return {
-    success: result.exitCode === 0,
-    output: await new Response(result.stdout).text(),
-  };
-}
-```
-
-## Security Considerations
-
-1. **Require token** - All system actions require valid token
-2. **Audit log** - Log all remote update requests
-3. **Rate limit** - Prevent update spam (max 1 per hour?)
-4. **Notification** - Optionally notify user when remote update occurs
+- Requires valid token
+- Log all remote update requests
+- Consider rate limiting
+- Optionally notify user
 
 ## Response
 
-```json
-{
-  "success": true,
-  "updated": ["machina", "apple-mcp"],
-  "version": "0.2.0",
-  "verification": {
-    "health": "ok",
-    "services": ["gateway", "whatsapp"]
-  }
-}
-```
-
-Or on failure:
-
-```json
-{
-  "success": false,
-  "error": "Component apple-mcp failed to build",
-  "logs": "..."
-}
-```
+On success: what was updated, new version, verification results.
+On failure: error details, logs.
 
 ## Fallback
 
 If remote update fails:
 
-1. Services should remain running (don't stop before update succeeds)
-2. Error logged to ~/machina/logs/update.log
-3. Error returned to caller
-4. User notified (if notification configured)
+- Services should remain running (don't stop before update succeeds)
+- Error logged and returned to caller
+- User notified if configured
 
 ## Scheduling
 
 Remote updates can be scheduled by cloud AI:
 
-- Daily at 3am: Check for updates, apply if available
-- After push to main: Webhook triggers update
-- Manual: User requests via Carmenta
-
-## Testing
-
-Before relying on remote updates:
-
-1. Test locally first
-2. Test with a non-critical change
-3. Verify rollback works
-4. Ensure notification/logging works
+- Daily at 3am
+- After push to main (webhook)
+- Manual via Carmenta
