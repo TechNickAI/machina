@@ -22,12 +22,12 @@ If this fails, check:
 ### 1. Gateway API
 
 ```bash
-# Get API key
+# Load token
 source ~/machina/config/.env
 
 # Test describe action
 curl -X POST http://localhost:8080/api/machina \
-  -H "X-API-Key: $MACHINA_API_KEY" \
+  -H "Authorization: Bearer $MACHINA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action": "describe"}'
 ```
@@ -36,7 +36,7 @@ curl -X POST http://localhost:8080/api/machina \
 
 **If fails**:
 
-- Check API key is correct
+- Check token is correct
 - Check gateway logs
 
 ### 2. Apple Services (iMessage, etc.)
@@ -74,7 +74,7 @@ osascript -e 'tell application "Reminders" to get name of every list'
 ```bash
 # Test via API (when gateway handlers are implemented)
 curl -X POST http://localhost:8080/api/machina \
-  -H "X-API-Key: $MACHINA_API_KEY" \
+  -H "Authorization: Bearer $MACHINA_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action": "messages.send", "params": {"to": "YOUR_PHONE", "body": "Test from Machina"}}'
 ```
@@ -148,16 +148,16 @@ curl http://localhost:8080/health
 
 ## Verification Summary
 
-| Check    | Command                                 | Expected              |
-| -------- | --------------------------------------- | --------------------- |
-| Health   | `curl localhost:8080/health`            | `{"status":"ok",...}` |
-| API Key  | `curl -H "X-API-Key: xxx" ...`          | Service list          |
-| Messages | `osascript -e 'tell app "Messages"...'` | No error              |
-| Contacts | `osascript -e 'tell app "Contacts"...'` | Contact list          |
-| WhatsApp | `tail ~/machina/logs/whatsapp.log`      | "Connected"           |
-| Remote   | `curl TAILSCALE_IP:8080/health`         | `{"status":"ok",...}` |
-| Restart  | Kill and wait                           | Auto-recovers         |
-| Boot     | Restart Mac                             | Services running      |
+| Check    | Command                                   | Expected              |
+| -------- | ----------------------------------------- | --------------------- |
+| Health   | `curl localhost:8080/health`              | `{"status":"ok",...}` |
+| Token    | `curl -H "Authorization: Bearer xxx" ...` | Service list          |
+| Messages | `osascript -e 'tell app "Messages"...'`   | No error              |
+| Contacts | `osascript -e 'tell app "Contacts"...'`   | Contact list          |
+| WhatsApp | `tail ~/machina/logs/whatsapp.log`        | "Connected"           |
+| Remote   | `curl TAILSCALE_IP:8080/health`           | `{"status":"ok",...}` |
+| Restart  | Kill and wait                             | Auto-recovers         |
+| Boot     | Restart Mac                               | Services running      |
 
 ## What Success Looks Like
 
@@ -165,7 +165,7 @@ When fully working:
 
 1. `launchctl list | grep machina` shows both services with PIDs
 2. `curl localhost:8080/health` returns OK
-3. API requests with correct key return expected data
+3. API requests with correct token return expected data
 4. Services restart automatically after crash
 5. Services start automatically after login
 6. Remote devices can reach via Tailscale

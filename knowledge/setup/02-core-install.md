@@ -51,49 +51,34 @@ bun add hono
 
 Then create the gateway code. See `components/gateway.md` for the implementation.
 
-## Create Configuration
+## Create Access Token
 
-### Environment File
-
-Create `~/machina/config/.env`:
+The gateway needs a token to authenticate incoming requests.
 
 ```bash
-# Generate a random API key
-API_KEY=$(openssl rand -hex 32)
-echo "MACHINA_API_KEY=$API_KEY" > ~/machina/config/.env
-echo "Your API key: $API_KEY"
+mkdir -p ~/machina/config
+TOKEN=$(openssl rand -hex 32)
+echo "MACHINA_TOKEN=$TOKEN" > ~/machina/config/.env
+echo "Your access token: $TOKEN"
 ```
 
-**Important**: Save this API key securely. It's required for all API requests.
+**Important**: Save this token securely. Include it in the `Authorization` header for all
+requests to the gateway.
 
-### Services Configuration
+## Assessing What's Installed
 
-Create `~/machina/config/services.json`:
+There's no config file listing enabled services. Claude assesses the system directly:
 
-```json
-{
-  "apple": {
-    "enabled": true,
-    "capabilities": [
-      "messages",
-      "mail",
-      "calendar",
-      "notes",
-      "reminders",
-      "contacts"
-    ]
-  },
-  "whatsapp": {
-    "enabled": false
-  },
-  "gateway": {
-    "port": 8080,
-    "host": "127.0.0.1"
-  }
-}
+```bash
+# What components are installed?
+ls ~/machina/components/
+
+# What services are running?
+launchctl list | grep machina
 ```
 
-Update `whatsapp.enabled` to `true` if user wants WhatsApp.
+If a component directory exists and builds successfully, it's available. If its LaunchD
+service is running, it's active.
 
 ## Directory Structure After Install
 
@@ -112,8 +97,7 @@ Update `whatsapp.enabled` to `true` if user wants WhatsApp.
 │       │   └── index.ts
 │       └── package.json
 ├── config/
-│   ├── .env
-│   └── services.json
+│   └── .env                # MACHINA_TOKEN only
 └── logs/
     └── (empty, will be populated)
 ```
@@ -123,6 +107,5 @@ Update `whatsapp.enabled` to `true` if user wants WhatsApp.
 After core installation:
 
 1. Configure each component (see `components/` docs)
-2. Set up networking (see `03-networking.md`)
-3. Configure LaunchD (see `04-launchd.md`)
-4. Verify everything (see `05-verification.md`)
+2. Set up LaunchD (see `04-launchd.md`)
+3. Verify everything (see `05-verification.md`)

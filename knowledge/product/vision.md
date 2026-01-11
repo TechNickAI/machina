@@ -125,7 +125,7 @@ We analyzed the existing ecosystem:
 ```
 Cloud AI (Carmenta)
          │
-         │ HTTPS + API Key
+         │ HTTPS + Token
          ▼
     ┌─────────────────────────────────────────┐
     │              Machina                    │

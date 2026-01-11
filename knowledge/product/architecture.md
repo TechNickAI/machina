@@ -17,7 +17,7 @@ capabilities.
 │                                                                     │
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │                    HTTP Gateway (port 8080)                  │   │
-│  │              Hono server with API key auth                   │   │
+│  │              Hono server with token auth                     │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │                              │                                      │
 │         ┌────────────────────┼────────────────────┐                │
@@ -63,7 +63,7 @@ capabilities.
 
 **Key features**:
 
-- API key authentication (X-API-Key header)
+- Token authentication (Authorization: Bearer header)
 - Progressive disclosure (describe action lists available operations)
 - Routes requests to appropriate backend service
 - Health check endpoint for monitoring
@@ -149,15 +149,15 @@ Tailscale provides zero-config VPN between your devices:
 - Handles NAT traversal
 - Free for personal use
 
-### API Key Authentication
+### Token Authentication
 
-Even with Tailscale, we add API key auth:
+Even with Tailscale, we add token auth:
 
-- Key stored in `~/machina/config/.env`
-- Passed via `X-API-Key` header
+- Token stored in `~/machina/config/.env` as `MACHINA_TOKEN`
+- Passed via `Authorization: Bearer` header
 - Gateway validates before routing
 
-This provides defense in depth - Tailscale for network, API key for application.
+Defense in depth: Tailscale for network isolation, token for application auth.
 
 ## Service Management
 
@@ -211,11 +211,11 @@ Gateway starts last, depends on backends being available.
 
    ```
    POST https://mac-mini.tailnet:8080/api/machina
-   X-API-Key: xxx
+   Authorization: Bearer xxx
    { "action": "messages.send", "params": { "to": "Mom", "body": "Hi!" } }
    ```
 
-2. Gateway validates API key, routes to apple-mcp handler
+2. Gateway validates token, routes to apple-mcp handler
 
 3. apple-mcp resolves "Mom" via Contacts, gets phone number
 
@@ -249,8 +249,7 @@ Gateway starts last, depends on backends being available.
 │   └── gateway/
 │
 ├── config/
-│   ├── .env               # API keys, secrets
-│   └── services.json      # Which services enabled
+│   └── .env               # MACHINA_TOKEN (only secret needed)
 │
 └── logs/
     ├── gateway.log
@@ -261,7 +260,7 @@ Gateway starts last, depends on backends being available.
 ## Security Model
 
 1. **Network**: Tailscale VPN - only your devices can reach Mac
-2. **Application**: API key validates each request
+2. **Application**: Token validates each request
 3. **Process**: Services run as your user, not root
 4. **Permissions**: macOS grants access per-app (Messages, Mail, etc.)
 

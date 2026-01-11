@@ -84,7 +84,7 @@ Machina orchestrates these existing projects - it doesn't reinvent them.
 ```
 Cloud AI (your agent)
          │
-         │ HTTPS + API Key + Tailscale
+         │ HTTPS + Token + Tailscale
          ▼
 ┌─────────────────────────────────────────┐
 │              Machina                    │

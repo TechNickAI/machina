@@ -44,7 +44,7 @@ tail -50 ~/machina/logs/gateway.error.log
 
 **Common causes**:
 
-- Missing environment variable (API key not set)
+- Missing environment variable (token not set)
 - Wrong path in plist file
 - Dependency not installed
 - Port already in use
@@ -190,22 +190,22 @@ tailscale ip -4
 - Check firewall isn't blocking port 8080
 - Verify gateway is listening on 0.0.0.0, not just localhost
 
-### API key rejected
+### Token rejected
 
-**Symptom**: `{"error": "Invalid API key"}`
+**Symptom**: `{"error": "Unauthorized"}`
 
 **Check**:
 
 ```bash
 source ~/machina/config/.env
-echo $MACHINA_API_KEY
+echo $MACHINA_TOKEN
 ```
 
 **Fix**:
 
-- Verify key matches what gateway was started with
+- Verify token matches what gateway was started with
 - Check for trailing newlines or spaces in .env file
-- Restart gateway after changing key
+- Restart gateway after changing token
 
 ## Update Issues
 

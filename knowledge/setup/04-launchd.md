@@ -38,8 +38,8 @@ Create `~/Library/LaunchAgents/com.machina.gateway.plist`:
 
     <key>EnvironmentVariables</key>
     <dict>
-        <key>MACHINA_API_KEY</key>
-        <string>YOUR_API_KEY_HERE</string>
+        <key>MACHINA_TOKEN</key>
+        <string>YOUR_TOKEN_HERE</string>
     </dict>
 
     <key>RunAtLoad</key>
@@ -57,8 +57,8 @@ Create `~/Library/LaunchAgents/com.machina.gateway.plist`:
 </plist>
 ```
 
-**Important**: Replace `USER` with actual username and `YOUR_API_KEY_HERE` with the
-generated API key.
+**Important**: Replace `USER` with actual username and `YOUR_TOKEN_HERE` with the
+generated token.
 
 ## WhatsApp Bridge Service
 
@@ -184,7 +184,7 @@ Must be set so relative paths in the service work correctly.
 
 ### EnvironmentVariables
 
-Secrets like API keys can be set here. They're only readable by the user.
+Secrets like tokens can be set here. They're only readable by the user.
 
 ## Troubleshooting
 

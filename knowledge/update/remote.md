@@ -12,7 +12,7 @@ POST request to gateway:
 
 ```bash
 curl -X POST http://MAC_TAILSCALE_IP:8080/api/machina \
-  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action": "system.update"}'
 ```
@@ -44,7 +44,7 @@ async function handleSystemUpdate() {
 
 ## Security Considerations
 
-1. **Require API key** - All system actions require valid key
+1. **Require token** - All system actions require valid token
 2. **Audit log** - Log all remote update requests
 3. **Rate limit** - Prevent update spam (max 1 per hour?)
 4. **Notification** - Optionally notify user when remote update occurs

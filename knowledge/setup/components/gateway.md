@@ -1,7 +1,7 @@
 # Gateway Setup
 
-The gateway is the HTTP entry point for all Machina capabilities. It provides API key
-authentication and routes requests to the appropriate backend.
+The gateway is the HTTP entry point for all Machina capabilities. It validates access
+tokens and routes requests to the appropriate backend.
 
 ## Location
 
@@ -34,11 +34,11 @@ import { cors } from "hono/cors";
 const app = new Hono();
 
 // Load config
-const API_KEY = process.env.MACHINA_API_KEY || Bun.env.MACHINA_API_KEY;
+const TOKEN = process.env.MACHINA_TOKEN || Bun.env.MACHINA_TOKEN;
 const PORT = parseInt(process.env.PORT || "8080");
 
-if (!API_KEY) {
-  console.error("MACHINA_API_KEY not set. Check ~/machina/config/.env");
+if (!TOKEN) {
+  console.error("MACHINA_TOKEN not set. Check ~/machina/config/.env");
   process.exit(1);
 }
 
@@ -50,11 +50,11 @@ app.get("/health", (c) => {
   return c.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// API key middleware
+// Token auth middleware
 app.use("/api/*", async (c, next) => {
-  const key = c.req.header("X-API-Key");
-  if (key !== API_KEY) {
-    return c.json({ error: "Invalid API key" }, 401);
+  const auth = c.req.header("Authorization");
+  if (!auth?.startsWith("Bearer ") || auth.slice(7) !== TOKEN) {
+    return c.json({ error: "Unauthorized" }, 401);
   }
   await next();
 });
@@ -175,7 +175,7 @@ export default {
 
 ```bash
 cd ~/machina/components/gateway
-source ~/machina/config/.env  # Load API key
+source ~/machina/config/.env  # Load token
 bun run src/index.ts
 ```
 
@@ -201,7 +201,7 @@ Response:
 
 ```bash
 curl -X POST http://localhost:8080/api/machina \
-  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action": "describe"}'
 ```
@@ -210,7 +210,7 @@ curl -X POST http://localhost:8080/api/machina \
 
 ```bash
 curl -X POST http://localhost:8080/api/machina \
-  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action": "messages.send", "params": {"to": "Mom", "body": "Hi!"}}'
 ```
@@ -219,7 +219,7 @@ curl -X POST http://localhost:8080/api/machina \
 
 ```bash
 curl -X POST http://localhost:8080/api/machina \
-  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"action": "contacts.search", "params": {"query": "John"}}'
 ```
@@ -253,8 +253,8 @@ The gateway currently has stub handlers. To implement:
 
 ## Security Notes
 
-1. API key must be set via environment variable
-2. Never commit API key to git
+1. Token must be set via environment variable
+2. Never commit token to git
 3. Use HTTPS in production (Tailscale handles this)
 4. Consider rate limiting for production use
 

@@ -7,7 +7,7 @@ This folder contains procedures for Claude to bootstrap machina on a Mac.
 After setup completes, the Mac will have:
 
 1. HTTP gateway running on port 8080
-2. API key authentication configured
+2. Token authentication configured
 3. Selected services installed and running (iMessage, WhatsApp, etc.)
 4. LaunchD configured for auto-start
 5. All services verified working
@@ -31,7 +31,7 @@ components/
   ├── apple-services.md → apple-mcp setup
   ├── whatsapp.md       → whatsapp-mcp setup
   └── gateway.md        → HTTP gateway setup
-03-networking.md        → Tailscale, API keys
+03-networking.md        → Tailscale, tokens
 04-launchd.md          → Auto-start configuration
 05-verification.md     → Test everything works
 ```
@@ -58,7 +58,7 @@ Before installing, ask the user:
 Setup is complete when:
 
 - [ ] `curl http://localhost:8080/health` returns 200
-- [ ] `curl -H "X-API-Key: xxx" http://localhost:8080/api/machina -d '{"action":"describe"}'` lists services
+- [ ] `curl -H "Authorization: Bearer xxx" http://localhost:8080/api/machina -d '{"action":"describe"}'` lists services
 - [ ] Test message sends successfully (if messaging enabled)
 - [ ] Services restart after simulated crash
 - [ ] Services start on login (if auto-start enabled)
