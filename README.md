@@ -51,7 +51,7 @@ cd ~/machina
 claude --permission-mode=bypassPermissions
 ```
 
-Then say: **"Set up machina"**
+Then run: **`/machina`**
 
 Claude will:
 
@@ -148,9 +148,9 @@ graph TB
 cd ~/machina && claude --permission-mode=bypassPermissions
 ```
 
-Say: **"Update machina"**
+Run: **`/machina`** (same command - it detects you're already installed and checks for updates)
 
-Or trigger remotely via the HTTP API. Machina can also self-update on a schedule.
+Or trigger remotely via the `system_update` MCP operation.
 
 ## Requirements
 
