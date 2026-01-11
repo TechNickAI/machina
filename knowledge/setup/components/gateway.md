@@ -21,7 +21,7 @@ bun run server/index.ts
 Environment variables:
 
 - `MACHINA_TOKEN` - Required. Bearer token for authentication.
-- `MACHINA_PORT` - Optional. Port to listen on (default: 8080).
+- `MACHINA_PORT` - Optional. Port to listen on (default: 9900).
 
 ## Architecture
 
@@ -32,7 +32,7 @@ Messages are read via SQLite for better reliability.
 AI Agent (Carmenta)
     ↓ MCP over Streamable HTTP
     ↓ Bearer token auth
-Machina Gateway (port 8080)
+Machina Gateway (port 9900)
     ↓ executes
 AppleScript → Contacts, Mail, Calendar, Notes, Reminders
 SQLite → Messages (chat.db)
@@ -60,7 +60,7 @@ SQLite → Messages (chat.db)
 To connect from Carmenta or another AI agent:
 
 1. **Tailscale**: Ensure both machines are on the same Tailscale network
-2. **URL**: `http://<tailscale-hostname>:8080/mcp`
+2. **URL**: `http://<tailscale-hostname>:9900/mcp`
 3. **Auth**: `Authorization: Bearer <MACHINA_TOKEN>`
 4. **Headers**: `Accept: application/json, text/event-stream`
 

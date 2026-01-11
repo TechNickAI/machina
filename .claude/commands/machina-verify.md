@@ -19,7 +19,7 @@ MACHINA_TOKEN=$(cat ~/machina/config/.env | grep MACHINA_TOKEN | cut -d= -f2)
 ### 1. Health Check
 
 ```bash
-curl -s http://localhost:8080/health
+curl -s http://localhost:9900/health
 ```
 
 Expected: `{"status":"ok","version":"..."}` with current version
@@ -29,7 +29,7 @@ Expected: `{"status":"ok","version":"..."}` with current version
 List available operations:
 
 ```bash
-curl -s http://localhost:8080/mcp \
+curl -s http://localhost:9900/mcp \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $MACHINA_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"machina","arguments":{"action":"describe"}}}'
@@ -40,7 +40,7 @@ Expected: JSON with list of operations (messages, contacts, notes, reminders)
 ### 3. Messages Test
 
 ```bash
-curl -s http://localhost:8080/mcp \
+curl -s http://localhost:9900/mcp \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $MACHINA_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"machina","arguments":{"action":"messages_recent","params":{"limit":1}}}}'
@@ -49,7 +49,7 @@ curl -s http://localhost:8080/mcp \
 ### 4. Contacts Test
 
 ```bash
-curl -s http://localhost:8080/mcp \
+curl -s http://localhost:9900/mcp \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $MACHINA_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"machina","arguments":{"action":"contacts_search","params":{"name":"John"}}}}'
@@ -58,7 +58,7 @@ curl -s http://localhost:8080/mcp \
 ### 5. Notes Test
 
 ```bash
-curl -s http://localhost:8080/mcp \
+curl -s http://localhost:9900/mcp \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $MACHINA_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"machina","arguments":{"action":"notes_list","params":{"limit":3}}}}'
@@ -67,7 +67,7 @@ curl -s http://localhost:8080/mcp \
 ### 6. Reminders Test
 
 ```bash
-curl -s http://localhost:8080/mcp \
+curl -s http://localhost:9900/mcp \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $MACHINA_TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"machina","arguments":{"action":"reminders_list"}}}'

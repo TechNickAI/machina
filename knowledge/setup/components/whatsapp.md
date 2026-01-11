@@ -1,70 +1,138 @@
-# WhatsApp (whatsapp-mcp)
+# WhatsApp (whatsapp-mcp-ts)
 
-WhatsApp messaging via the WhatsApp Web protocol.
+WhatsApp messaging via the WhatsApp Web protocol using Baileys library.
 
 ## Source
 
-Repository: `lharries/whatsapp-mcp`
-Location: `~/machina/components/whatsapp-mcp`
+Repository: `jlucaso1/whatsapp-mcp-ts`
+Location: `~/machina/components/whatsapp-mcp-ts`
 
 ## Architecture
 
-Two-layer bridge:
+TypeScript daemon with HTTP API:
 
-1. **Go bridge**: Connects to WhatsApp Web, handles E2E encryption, stores messages
-2. **Python MCP**: Query interface, calls Go bridge HTTP API
+1. **Baileys library**: Connects to WhatsApp Web, handles E2E encryption
+2. **SQLite sync**: Messages stored locally for fast queries
+3. **HTTP API**: Send messages via POST to daemon
 
-The Go bridge runs on **port 3001** (not 8080, to avoid collision with gateway).
+The daemon runs on **port 9901**.
 
 ## Installation
 
-1. Clone the repo
-2. Build the Go bridge in `whatsapp-bridge/` subdirectory
-3. Install Python dependencies
+```bash
+# Clone repository
+cd ~/src
+git clone https://github.com/jlucaso1/whatsapp-mcp-ts.git
+
+# Create symlink in machina components
+mkdir -p ~/machina/components
+ln -sf ~/src/whatsapp-mcp-ts ~/machina/components/whatsapp-mcp-ts
+
+# Install dependencies
+cd ~/machina/components/whatsapp-mcp-ts
+npm install
+```
 
 ## First-Time Authentication
 
 WhatsApp requires QR code authentication:
 
-1. Start the Go bridge with `--port 3001`
-2. QR code appears in terminal
+1. Start the daemon manually: `node src/daemon.ts`
+2. A browser window opens with QR code
 3. On phone: WhatsApp → Settings → Linked Devices → Link a Device → Scan QR
-4. Bridge connects and starts receiving messages
-5. Session saved to `store/` directory
+4. Daemon connects and starts syncing messages
+5. Session saved to `auth_info_baileys/` directory
 
-**Important**: The Go bridge must stay running. If it stops, messages won't sync.
+**Important**: The daemon must stay running for real-time message sync.
 
 ## Session Persistence
 
-- Session stored in `whatsapp-bridge/store/`
+- Session stored in `auth_info_baileys/`
 - Lasts approximately 20 days
 - After expiration, re-scan QR code
-- Health check should warn when session expires soon
+- `/health` endpoint shows connection status
 
-## Integration
+## LaunchD Service
 
-Gateway calls WhatsApp via HTTP to the Go bridge on port 3001.
+Create `~/Library/LaunchAgents/com.machina.whatsapp.plist`:
 
-## Media Support
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.machina.whatsapp</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/node</string>
+        <string>src/daemon.ts</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/YOUR_USER/machina/components/whatsapp-mcp-ts</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>WHATSAPP_PORT</key>
+        <string>9901</string>
+        <key>WHATSAPP_MCP_DATA_DIR</key>
+        <string>/Users/YOUR_USER/machina/components/whatsapp-mcp-ts</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/YOUR_USER/machina/logs/whatsapp-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/YOUR_USER/machina/logs/whatsapp-stderr.log</string>
+</dict>
+</plist>
+```
 
-Supports images, videos, documents, and voice messages. Voice conversion requires ffmpeg.
+Load with: `launchctl load ~/Library/LaunchAgents/com.machina.whatsapp.plist`
+
+## Gateway Integration
+
+Gateway accesses WhatsApp via:
+
+- **Reads**: Direct SQLite queries to `data/whatsapp.db`
+- **Sends**: HTTP POST to `http://localhost:9901/api/send`
+
+Available gateway operations:
+
+- `whatsapp_status` - Check connection
+- `whatsapp_chats` - List conversations
+- `whatsapp_messages` - Read chat messages
+- `whatsapp_search` - Search messages
+- `whatsapp_contacts` - Find contacts
+- `whatsapp_send` - Send messages
+- `whatsapp_raw_sql` - Custom read queries
+
+## Database Schema
+
+SQLite at `data/whatsapp.db`:
+
+- **chats**: `jid`, `name`, `last_message_time`
+- **messages**: `id`, `chat_jid`, `sender`, `content`, `timestamp`, `is_from_me`
+- **contacts**: `jid`, `name`, `notify`, `phone_number`
 
 ## Troubleshooting
 
 ### QR code not appearing
 
-Go bridge not running or terminal doesn't support Unicode.
+Try running in terminal: `node src/daemon.ts`
+Baileys opens a browser window for QR code.
 
 ### Session expired
 
-Delete the `store/` directory and re-authenticate with new QR code.
+Delete `auth_info_baileys/` directory and re-authenticate.
 
-### Messages not sending
+### Messages not syncing
 
-Check phone number format: `+[country][number]` (e.g., +14155551234).
-Verify Go bridge is running and recipient has WhatsApp.
+Check daemon is running: `curl http://localhost:9901/health`
+Restart if needed: `launchctl kickstart -k gui/$(id -u)/com.machina.whatsapp`
 
-### Connection closed
+### Connection status "disconnected"
 
-Phone may have lost internet, WhatsApp app force-closed, or session expired.
-Restart Go bridge. Re-scan QR if needed.
+Phone may have lost internet or WhatsApp app force-closed.
+Check phone, then restart daemon if needed.
