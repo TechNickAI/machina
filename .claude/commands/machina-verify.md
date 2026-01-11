@@ -1,108 +1,127 @@
 ---
-description: Test all Machina capabilities to verify the installation is working
+description: Test all Machina MCP capabilities through the API
 ---
 
 # Machina Verify
 
-Test all Machina capabilities to verify the installation is working.
+Test Machina by calling the actual MCP API endpoints. This verifies the full stack: gateway, authentication, and each capability.
 
-## Process
+## Setup
 
-Run these tests in sequence, reporting results as you go:
+Get the auth token:
 
-### 1. Gateway Health
+```bash
+MACHINA_TOKEN=$(cat ~/machina/config/.env | grep MACHINA_TOKEN | cut -d= -f2)
+```
+
+## Tests
+
+Run these tests in sequence through the MCP API:
+
+### 1. Health Check (unauthenticated)
 
 ```bash
 curl -s http://localhost:8080/health
 ```
 
-Expected: `{"status":"ok"...}`
+Expected: `{"status":"ok","version":"..."}` with current version
 
-### 2. Reminders Test
+### 2. MCP Describe (authenticated)
 
-Create a test reminder, verify it exists, delete it:
-
-```bash
-osascript -e '
-tell application "Reminders"
-  set targetList to list "Reminders"
-  make new reminder in targetList with properties {name:"machina-verify-test", body:"Safe to delete"}
-end tell'
-```
-
-Then verify:
+Test that MCP endpoint responds and lists available operations:
 
 ```bash
-osascript -e '
-tell application "Reminders"
-  set targetList to list "Reminders"
-  return (count of (reminders in targetList whose name is "machina-verify-test")) as text
-end tell'
+curl -s http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $MACHINA_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"machina","arguments":{"action":"describe"}}}'
 ```
 
-Then delete:
+Expected: JSON response listing available operations (messages, contacts, notes, reminders)
+
+### 3. Messages Test
+
+Read recent messages through MCP:
 
 ```bash
-osascript -e '
-tell application "Reminders"
-  set targetList to list "Reminders"
-  delete (first reminder in targetList whose name is "machina-verify-test")
-end tell'
+curl -s http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $MACHINA_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"machina","arguments":{"action":"messages_recent","limit":1}}}'
 ```
 
-### 3. Notes Test
+Expected: Returns recent message data (not an error)
 
-Create a test note, verify it exists, delete it:
+### 4. Contacts Test
+
+Search contacts through MCP:
 
 ```bash
-osascript -e '
-tell application "Notes"
-  set targetFolder to folder "Notes"
-  make new note in targetFolder with properties {name:"machina-verify-test", body:"Safe to delete"}
-end tell'
+curl -s http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $MACHINA_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"machina","arguments":{"action":"contacts_search","query":"a"}}}'
 ```
 
-Then verify and delete similarly.
+Expected: Returns contact data (not an error)
 
-### 4. Messages Test
+### 5. Notes Test
 
-Read recent messages (safe, no sending):
+List notes through MCP:
 
 ```bash
-sqlite3 ~/Library/Messages/chat.db "SELECT text FROM message ORDER BY date DESC LIMIT 1"
+curl -s http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $MACHINA_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"machina","arguments":{"action":"notes_list"}}}'
 ```
 
-### 5. Contacts Test
+Expected: Returns notes list (not an error)
 
-Count contacts to verify access:
+### 6. Reminders Test
+
+List reminders through MCP:
 
 ```bash
-osascript -e 'tell application "Contacts" to return (count of people) as text'
+curl -s http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $MACHINA_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"machina","arguments":{"action":"reminders_list"}}}'
 ```
+
+Expected: Returns reminders list (not an error)
 
 ## Output Format
 
-Report results like:
-
 ```
-Machina Verification Results: X/5 passed
+Machina MCP Verification: X/6 passed
 
-Gateway: Health endpoint responding
-Reminders: Create/verify/delete worked
-Notes: Create/verify/delete worked
-Messages: Can read messages
-Contacts: Can access contacts (142 found)
+Health: Gateway responding (version X.X.X)
+Auth: MCP endpoint authenticated successfully
+Messages: Retrieved recent messages via API
+Contacts: Searched contacts via API
+Notes: Listed notes via API
+Reminders: Listed reminders via API
 
-All capabilities working!
+All MCP capabilities working!
 ```
 
 Or if failures:
 
 ```
-Some capabilities need attention.
-Check System Preferences -> Privacy & Security -> Automation
+Machina MCP Verification: X/6 passed
+
+Health: OK
+Auth: FAILED - check MACHINA_TOKEN in ~/machina/config/.env
+...
+
+Check the gateway logs: tail ~/machina/logs/gateway.log
 ```
 
-## Always Clean Up
+## What This Verifies
 
-If any test item was created, always attempt to delete it even if verification failed.
+- Gateway is running and healthy
+- Authentication with Bearer token works
+- MCP JSON-RPC protocol is functioning
+- Each Mac capability is accessible through the API
+- End-to-end flow that cloud AI agents will use
