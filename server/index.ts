@@ -62,7 +62,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "List of matching contacts with phone numbers",
-    example: "contacts_search({name: 'John'})",
+    example: "machina(action='contacts_search', params={name: 'John'})",
   },
   {
     name: "messages_unread",
@@ -77,7 +77,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Recent messages with date, sender, and text",
-    example: "messages_unread({limit: 5})",
+    example: "machina(action='messages_unread', params={limit: 5})",
   },
   {
     name: "messages_send",
@@ -97,7 +97,8 @@ const operations: Operation[] = [
       },
     ],
     returns: "Confirmation message",
-    example: "messages_send({to: '+15551234567', message: 'Hello!'})",
+    example:
+      "machina(action='messages_send', params={to: '+15551234567', message: 'Hello!'})",
   },
   {
     name: "messages_read",
@@ -118,7 +119,8 @@ const operations: Operation[] = [
       },
     ],
     returns: "Messages with date, sender (Me or contact), and text",
-    example: "messages_read({contact: '+15551234567', limit: 20})",
+    example:
+      "machina(action='messages_read', params={contact: '+15551234567', limit: 20})",
   },
   {
     name: "calendar_list",
@@ -133,7 +135,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "List of events with title and start time",
-    example: "calendar_list({days: 14})",
+    example: "machina(action='calendar_list', params={days: 14})",
   },
   {
     name: "notes_list",
@@ -148,7 +150,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "List of note titles",
-    example: "notes_list({limit: 5})",
+    example: "machina(action='notes_list', params={limit: 5})",
   },
   {
     name: "reminders_list",
@@ -163,7 +165,8 @@ const operations: Operation[] = [
       },
     ],
     returns: "Reminders grouped by list",
-    example: "reminders_list({includeCompleted: true})",
+    example:
+      "machina(action='reminders_list', params={includeCompleted: true})",
   },
 ];
 
