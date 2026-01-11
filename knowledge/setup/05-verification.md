@@ -2,6 +2,20 @@
 
 After installation, verify each component works correctly.
 
+## Offer to Verify
+
+After completing setup or update, **always ask the user** if they want to run verification:
+
+> "Setup complete! Would you like me to run a quick verification to test all capabilities?"
+
+If they agree, run the `/machina-verify` skill which tests:
+
+- Gateway health endpoint
+- Reminders (create/verify/delete)
+- Notes (create/verify/delete)
+- Messages (read recent)
+- Contacts (count access)
+
 ## Quick Health Check
 
 Hit the gateway health endpoint. Should return `{ "status": "ok" }`.
