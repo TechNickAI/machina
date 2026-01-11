@@ -25,10 +25,6 @@ const checks = [
       "sqlite3 ~/Library/Messages/chat.db 'SELECT COUNT(*) FROM message LIMIT 1'",
   },
   {
-    name: "Calendar",
-    script: 'tell application "Calendar" to count every calendar',
-  },
-  {
     name: "Notes",
     script: 'tell application "Notes" to count every note',
   },

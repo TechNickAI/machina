@@ -39,7 +39,6 @@ This will trigger permission prompts for:
 
 - Contacts
 - Messages (Full Disk Access for chat.db)
-- Calendar
 - Notes
 - Reminders
 
