@@ -123,21 +123,6 @@ const operations: Operation[] = [
       "machina(action='messages_read', params={contact: '+15551234567', limit: 20})",
   },
   {
-    name: "calendar_list",
-    description: "List upcoming calendar events",
-    parameters: [
-      {
-        name: "days",
-        type: "number",
-        required: false,
-        description: "Days ahead to look",
-        default: 7,
-      },
-    ],
-    returns: "List of events with title and start time",
-    example: "machina(action='calendar_list', params={days: 14})",
-  },
-  {
     name: "notes_list",
     description: "List recent notes",
     parameters: [
@@ -279,25 +264,6 @@ async function executeOperation(
       return stdout.trim() || `No messages found for ${params.contact}`;
     }
 
-    case "calendar_list": {
-      const days = params.days || 7;
-      const script = `tell application "Calendar"
-        set startDate to current date
-        set endDate to startDate + (${days} * days)
-        set eventList to {}
-        repeat with cal in calendars
-          set events to (every event of cal whose start date >= startDate and start date <= endDate)
-          repeat with e in events
-            set evtTitle to summary of e
-            set evtStart to start date of e
-            set end of eventList to evtTitle & " - " & evtStart
-          end repeat
-        end repeat
-        return eventList as text
-      end tell`;
-      return await runAppleScript(script);
-    }
-
     case "notes_list": {
       const limit = params.limit || 10;
       const script = `tell application "Notes"
@@ -362,8 +328,8 @@ const tools = [
   {
     name: "machina",
     description:
-      "Access Mac capabilities (Messages, Contacts, Calendar, Notes, Reminders). " +
-      "Top operations: messages_unread, messages_send(to, message), contacts_search(name) +4 more",
+      "Access Mac capabilities (Messages, Notes, Reminders, Contacts). " +
+      "Top operations: messages_unread, messages_send(to, message), notes_list, contacts_search(name) +2 more",
     inputSchema: {
       type: "object",
       properties: {
