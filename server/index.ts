@@ -626,7 +626,6 @@ async function executeOperation(
         ? `of folder "${escapeAppleScript(params.folder)}"`
         : "";
       const script = `tell application "Notes"
-        activate
         set noteList to {}
         set allNotes to notes ${folderFilter}
         set noteCount to count of allNotes
@@ -646,7 +645,6 @@ async function executeOperation(
       if (!params.title) throw new Error("Missing required parameter: title");
       const escapedTitle = escapeAppleScript(params.title);
       const script = `tell application "Notes"
-        activate
         set matchingNotes to (notes whose name contains "${escapedTitle}")
         if (count of matchingNotes) = 0 then
           return "Note not found: ${escapedTitle}"
@@ -664,7 +662,6 @@ async function executeOperation(
       const escapedTitle = escapeAppleScript(params.title);
       const escapedBody = escapeAppleScript(params.body);
       const script = `tell application "Notes"
-        activate
         tell folder "${escapedFolder}"
           make new note with properties {name:"${escapedTitle}", body:"${escapedBody}"}
         end tell
@@ -678,7 +675,6 @@ async function executeOperation(
       const limit = Math.min(Math.max(1, params.limit || 10), 100);
       const escapedQuery = escapeAppleScript(params.query);
       const script = `tell application "Notes"
-        activate
         set matchingNotes to (notes whose name contains "${escapedQuery}" or plaintext contains "${escapedQuery}")
         set noteList to {}
         set noteCount to count of matchingNotes
@@ -705,7 +701,6 @@ async function executeOperation(
         // Filter to specific list
         const escapedList = escapeAppleScript(params.list);
         script = `tell application "Reminders"
-          activate
           set reminderList to {}
           set targetList to list "${escapedList}"
           set rems to (reminders of targetList ${completedFilter})
@@ -722,7 +717,6 @@ async function executeOperation(
       } else {
         // All lists
         script = `tell application "Reminders"
-          activate
           set reminderList to {}
           repeat with l in lists
             set rems to (reminders of l ${completedFilter})
@@ -753,7 +747,6 @@ async function executeOperation(
       props += "}";
 
       let script = `tell application "Reminders"
-        activate
         tell list "${escapedList}"
           set newReminder to make new reminder with properties ${props}`;
 
@@ -778,7 +771,6 @@ async function executeOperation(
         ? `of list "${escapeAppleScript(params.list)}"`
         : "";
       const script = `tell application "Reminders"
-        activate
         set matchingReminders to (reminders ${listFilter} whose name contains "${escapedTitle}" and completed is false)
         if (count of matchingReminders) = 0 then
           return "No incomplete reminder found matching: ${escapedTitle}"
@@ -795,7 +787,6 @@ async function executeOperation(
       if (!params.name) throw new Error("Missing required parameter: name");
       const escapedName = escapeAppleScript(params.name);
       const script = `tell application "Contacts"
-        activate
         set matchingPeople to (every person whose name contains "${escapedName}")
         set results to {}
         repeat with p in matchingPeople
@@ -822,7 +813,6 @@ async function executeOperation(
       if (!params.name) throw new Error("Missing required parameter: name");
       const escapedName = escapeAppleScript(params.name);
       const script = `tell application "Contacts"
-        activate
         set matchingPeople to (every person whose name contains "${escapedName}")
         if (count of matchingPeople) = 0 then
           return "Contact not found: ${escapedName}"
