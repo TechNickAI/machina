@@ -1079,7 +1079,7 @@ const sessions: Record<
 // Create MCP server
 function createServer(): Server {
   const server = new Server(
-    { name: "machina", version: "1.4.0" },
+    { name: "machina", version: "1.4.1" },
     { capabilities: { tools: { listChanged: false } } },
   );
 
@@ -1125,7 +1125,7 @@ app.use(express.json());
 
 // Health check (no auth required)
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", version: "1.4.0" });
+  res.json({ status: "ok", version: "1.4.1" });
 });
 
 // MCP endpoint
