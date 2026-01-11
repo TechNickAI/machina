@@ -1,17 +1,10 @@
+---
+description: Test all Machina capabilities to verify the installation is working
+---
+
 # Machina Verify
 
 Test all Machina capabilities to verify the installation is working.
-
-## When to Use
-
-- After running "set up machina"
-- After running "update machina"
-- When troubleshooting capability issues
-- When user asks to verify or test machina
-
-## Invocation
-
-User says: `/machina-verify` or "verify machina" or "test machina capabilities"
 
 ## Process
 
@@ -94,20 +87,20 @@ Report results like:
 ```
 Machina Verification Results: X/5 passed
 
-✅ Gateway: Health endpoint responding
-✅ Reminders: Create/verify/delete worked
-✅ Notes: Create/verify/delete worked
-✅ Messages: Can read messages
-✅ Contacts: Can access contacts (142 found)
+Gateway: Health endpoint responding
+Reminders: Create/verify/delete worked
+Notes: Create/verify/delete worked
+Messages: Can read messages
+Contacts: Can access contacts (142 found)
 
-🎉 All capabilities working!
+All capabilities working!
 ```
 
 Or if failures:
 
 ```
-⚠️ Some capabilities need attention.
-Check System Preferences → Privacy & Security → Automation
+Some capabilities need attention.
+Check System Preferences -> Privacy & Security -> Automation
 ```
 
 ## Always Clean Up

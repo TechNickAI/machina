@@ -1,11 +1,10 @@
+---
+description: Smart setup and update for Machina - detects current state and does the right thing
+---
+
 # Machina
 
 Smart setup and update for Machina. Detects current state and does the right thing.
-
-## When to Use
-
-- User runs `/machina`
-- User says "set up machina", "install machina", "update machina"
 
 ## Process
 
