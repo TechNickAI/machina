@@ -25,24 +25,44 @@ Machina provides:
 
 ## Installation
 
-Requires [Claude Code](https://claude.ai/code).
+### Prerequisites
+
+**You need:**
+
+1. **macOS** (Apple Silicon or Intel)
+2. **[Tailscale](https://tailscale.com)** - Sign up and install (free tier works)
+3. **[Claude Code](https://claude.ai/code)** - The AI-native installer
+
+**Optional:**
+
+- Homebrew (Claude will install if needed)
+- Bun (Claude will install if needed)
+
+### Quick Start
 
 ```bash
+# 1. Clone the repo
 git clone https://github.com/TechNickAI/machina ~/machina
-cd ~/machina && claude
+cd ~/machina
+
+# 2. Start Claude Code
+claude
 ```
 
 Then say: **"Set up machina"**
 
 Claude will:
 
-1. Assess your system (Homebrew, permissions, macOS version)
-2. Ask which capabilities you want
-3. Install and configure everything
-4. Test that it works
-5. Set up auto-start and remote access
+1. ✅ Verify prerequisites (Tailscale, macOS version)
+2. 🔐 Trigger all permission prompts at once (approve them all)
+3. 📦 Install Bun and dependencies
+4. 🔑 Generate authentication token
+5. 🚀 Start the MCP gateway
+6. 🌐 Configure Tailscale HTTPS access
+7. 🧪 Test with actual iMessage/Calendar queries
+8. 📋 Give you an MCP config to copy/paste
 
-**That's it.** No manual steps. No debugging permission errors. Claude handles everything.
+**That's it.** 5-10 minutes. No bash scripts. No debugging. Claude adapts to your system.
 
 ## The AI-Native Installer
 
@@ -67,43 +87,58 @@ Traditional installers follow deterministic steps and break on edge cases. Machi
 
 ## Capabilities
 
-| Capability | Source                                                   | Status |
-| ---------- | -------------------------------------------------------- | ------ |
-| iMessage   | [apple-mcp](https://github.com/TechNickAI/apple-mcp)     | Ready  |
-| Mail       | apple-mcp                                                | Ready  |
-| Calendar   | apple-mcp                                                | Ready  |
-| Notes      | apple-mcp                                                | Ready  |
-| Reminders  | apple-mcp                                                | Ready  |
-| Contacts   | apple-mcp                                                | Ready  |
-| WhatsApp   | [whatsapp-mcp](https://github.com/lharries/whatsapp-mcp) | Ready  |
+| Capability | Implementation                                                  | Status     |
+| ---------- | --------------------------------------------------------------- | ---------- |
+| iMessage   | Direct SQLite + AppleScript                                     | ✅ Ready   |
+| Notes      | AppleScript                                                     | ✅ Ready   |
+| Reminders  | AppleScript                                                     | ✅ Ready   |
+| Contacts   | AppleScript                                                     | ✅ Ready   |
+| WhatsApp   | [whatsapp-mcp](https://github.com/lharries/whatsapp-mcp) bridge | 🚧 Planned |
 
-Machina orchestrates these existing projects - it doesn't reinvent them.
+All operations use the **progressive disclosure** pattern - one `machina` tool, operations discovered via `describe` action.
 
 ## Architecture
 
-```
-Cloud AI (Carmenta, etc.)
-         │
-         │ MCP over Streamable HTTP
-         │ Bearer token auth
-         │ Tailscale for network
-         ▼
-┌─────────────────────────────────────────┐
-│           machina-mcp                   │
-│                                         │
-│   MCP Gateway (port 8080)               │
-│         │                               │
-│   ┌─────┴─────┬───────────┐             │
-│   ▼           ▼           ▼             │
-│ apple-mcp  whatsapp    (future)         │
-│  (stdio)    bridge                      │
-│            (3001)                       │
-│                                         │
-│   AppleScript ←→ Native macOS           │
-└─────────────────────────────────────────┘
+```mermaid
+graph TB
+    AI[Cloud AI Agent<br/>Claude, Carmenta, etc.]
+    TS[Tailscale Network<br/>Encrypted tunnel]
+    GW[Machina Gateway<br/>:8080]
+
+    subgraph "Your Mac"
+        GW
+        AS[AppleScript Engine]
+        DB[(Messages DB<br/>SQLite)]
+
+        subgraph "macOS Apps"
+            MSG[Messages]
+            NOTES[Notes]
+            REM[Reminders]
+            CONT[Contacts]
+        end
+    end
+
+    AI -->|MCP over HTTPS<br/>Bearer token| TS
+    TS -->|Port 8080| GW
+    GW -->|Direct SQLite| DB
+    GW -->|AppleScript| AS
+    AS --> MSG
+    AS --> NOTES
+    AS --> REM
+    AS --> CONT
+
+    style AI fill:#e1f5ff
+    style TS fill:#fff3cd
+    style GW fill:#d4edda
+    style AS fill:#f8d7da
 ```
 
-The gateway is an npm package (`machina-mcp`) running as a LaunchD service.
+**Key points:**
+
+- **Progressive disclosure:** One `machina` tool, operations discovered on-demand
+- **Direct access:** SQLite for Messages (faster), AppleScript for others
+- **Secure:** Tailscale encrypted tunnel + bearer token auth
+- **Simple:** Single Bun process, no complex orchestration
 
 ## Updates
 

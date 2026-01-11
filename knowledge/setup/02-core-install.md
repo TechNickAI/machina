@@ -29,39 +29,43 @@ curl -fsSL https://bun.sh/install | bash
 cd ~/machina && bun install
 ```
 
-4. **Generate token**:
+4. **Trigger all permissions at once** (frontloads permission dialogs):
+
+```bash
+bun run server/trigger-permissions.ts
+```
+
+This will trigger permission prompts for:
+
+- Contacts
+- Messages (Full Disk Access for chat.db)
+- Notes
+- Reminders
+
+**Grant all of them.** Approve each dialog as it appears.
+
+If you miss any:
+
+- System Preferences → Privacy & Security → Automation (for AppleScript)
+- System Preferences → Privacy & Security → Full Disk Access (for Messages)
+
+5. **Generate token**:
 
 ```bash
 mkdir -p ~/machina/config
-openssl rand -hex 32 > ~/machina/config/.env
-# Edit to make it: MACHINA_TOKEN=<the-hex-value>
+TOKEN=$(openssl rand -hex 32)
+echo "MACHINA_TOKEN=$TOKEN" > ~/machina/config/.env
+echo "Token: $TOKEN"
 ```
 
-5. **Test the server**:
+6. **Start the server**:
 
 ```bash
 export MACHINA_TOKEN=$(cat ~/machina/config/.env | grep MACHINA_TOKEN | cut -d= -f2)
 bun run server/index.ts
 ```
 
-6. **Verify**: Hit `http://localhost:8080/health` - should return `{"status":"ok"}`
-
-## First Run Permissions
-
-On first tool call, expect **multiple macOS permission prompts**:
-
-- Contacts access
-- Messages access
-- Mail access
-- Calendar access
-- Notes access
-- Reminders access
-- Full Disk Access (for message database)
-
-**Grant all of them.** The gateway needs these to execute AppleScript.
-
-If you miss a prompt, go to System Preferences → Privacy & Security → Automation
-and grant access manually.
+7. **Verify**: `curl http://localhost:8080/health` should return `{"status":"ok","version":"1.0.0"}`
 
 ## WhatsApp Bridge (Optional)
 
