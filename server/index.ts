@@ -870,23 +870,26 @@ async function executeOperation(
         results.push(`\nChanges:\n${changelog.trim()}`);
       }
 
-      // Auto-restart: spawn new server, then exit
+      // Auto-restart: close server, spawn new, exit
       results.push("\nRestarting server...");
-
-      // Spawn new server process detached
-      const { spawn } = await import("node:child_process");
-      const newServer = spawn("bun", ["run", "server/index.ts"], {
-        cwd: process.cwd(),
-        detached: true,
-        stdio: "ignore",
-        env: { ...process.env },
-      });
-      newServer.unref();
-
-      // Schedule exit after response is sent
-      setTimeout(() => process.exit(0), 500);
-
       results.push("✅ Update complete. New server starting.");
+
+      // Close server after response is sent to avoid port conflict
+      setImmediate(() => {
+        httpServer.close(() => {
+          // Port is now released, spawn new server
+          const { spawn } = require("node:child_process");
+          const newServer = spawn("bun", ["run", "server/index.ts"], {
+            cwd: process.cwd(),
+            detached: true,
+            stdio: "ignore",
+            env: { ...process.env },
+          });
+          newServer.unref();
+          process.exit(0);
+        });
+      });
+
       return results.join("\n");
     }
 
@@ -1121,7 +1124,7 @@ app.delete("/mcp", authenticate, async (req: Request, res: Response) => {
 });
 
 // Start server
-app.listen(PORT, "0.0.0.0", () => {
+const httpServer = app.listen(PORT, "0.0.0.0", () => {
   console.log(`Machina MCP gateway running on http://0.0.0.0:${PORT}`);
   console.log(`MCP endpoint: POST /mcp`);
   console.log(`Health check: GET /health`);
