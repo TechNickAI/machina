@@ -1,0 +1,25 @@
+# Components (cloned during setup, not committed)
+/components/
+
+# Configuration (contains secrets)
+config/.env
+config/*.local
+
+# Logs
+logs/
+
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary
+*.tmp
+*.temp
