@@ -876,17 +876,32 @@ async function executeOperation(
 
       // Close server after response is sent to avoid port conflict
       setImmediate(() => {
+        // Force close all connections (SSE, long-polling, etc) to ensure clean shutdown
+        if (httpServer.closeAllConnections) {
+          httpServer.closeAllConnections();
+        }
+
         httpServer.close(() => {
           // Port is now released, spawn new server
           const { spawn } = require("node:child_process");
           const newServer = spawn("bun", ["run", "server/index.ts"], {
             cwd: process.cwd(),
             detached: true,
-            stdio: "ignore",
+            stdio: "inherit", // Show errors if spawn fails
             env: { ...process.env },
           });
-          newServer.unref();
-          process.exit(0);
+
+          // Only exit if spawn succeeds - if it fails, keep old server running
+          newServer.on("error", (err) => {
+            console.error("Failed to spawn new server:", err);
+            console.error("Keeping old server running");
+            // Don't exit - let LaunchD handle restart if needed
+          });
+
+          newServer.on("spawn", () => {
+            newServer.unref();
+            process.exit(0);
+          });
         });
       });
 
