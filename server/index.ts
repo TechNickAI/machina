@@ -3,7 +3,7 @@
  * Machina MCP Gateway
  *
  * Exposes Mac capabilities via Streamable HTTP MCP transport.
- * Directly executes AppleScript for Apple services.
+ * Uses progressive disclosure pattern - one gateway tool with action/params.
  *
  * Environment:
  *   MACHINA_TOKEN - Required bearer token for auth
@@ -32,6 +32,183 @@ if (!TOKEN) {
   process.exit(1);
 }
 
+// Operation definitions with full help metadata
+interface OperationParam {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+  default?: any;
+}
+
+interface Operation {
+  name: string;
+  description: string;
+  parameters: OperationParam[];
+  returns: string;
+  example?: string;
+}
+
+const operations: Operation[] = [
+  {
+    name: "contacts_search",
+    description: "Search for contacts by name",
+    parameters: [
+      {
+        name: "name",
+        type: "string",
+        required: true,
+        description: "Name to search for",
+      },
+    ],
+    returns: "List of matching contacts with phone numbers",
+    example: "contacts_search({name: 'John'})",
+  },
+  {
+    name: "messages_unread",
+    description: "Get recent iMessages",
+    parameters: [
+      {
+        name: "limit",
+        type: "number",
+        required: false,
+        description: "Max messages to return",
+        default: 10,
+      },
+    ],
+    returns: "Recent messages with date, sender, and text",
+    example: "messages_unread({limit: 5})",
+  },
+  {
+    name: "messages_send",
+    description: "Send an iMessage",
+    parameters: [
+      {
+        name: "to",
+        type: "string",
+        required: true,
+        description: "Phone number or email to send to",
+      },
+      {
+        name: "message",
+        type: "string",
+        required: true,
+        description: "Message text",
+      },
+    ],
+    returns: "Confirmation message",
+    example: "messages_send({to: '+15551234567', message: 'Hello!'})",
+  },
+  {
+    name: "messages_read",
+    description: "Read recent messages from a specific contact",
+    parameters: [
+      {
+        name: "contact",
+        type: "string",
+        required: true,
+        description: "Phone number or name",
+      },
+      {
+        name: "limit",
+        type: "number",
+        required: false,
+        description: "Max messages",
+        default: 10,
+      },
+    ],
+    returns: "Messages with date, sender (Me or contact), and text",
+    example: "messages_read({contact: '+15551234567', limit: 20})",
+  },
+  {
+    name: "calendar_list",
+    description: "List upcoming calendar events",
+    parameters: [
+      {
+        name: "days",
+        type: "number",
+        required: false,
+        description: "Days ahead to look",
+        default: 7,
+      },
+    ],
+    returns: "List of events with title and start time",
+    example: "calendar_list({days: 14})",
+  },
+  {
+    name: "notes_list",
+    description: "List recent notes",
+    parameters: [
+      {
+        name: "limit",
+        type: "number",
+        required: false,
+        description: "Max notes to return",
+        default: 10,
+      },
+    ],
+    returns: "List of note titles",
+    example: "notes_list({limit: 5})",
+  },
+  {
+    name: "reminders_list",
+    description: "List reminders",
+    parameters: [
+      {
+        name: "includeCompleted",
+        type: "boolean",
+        required: false,
+        description: "Include completed reminders",
+        default: false,
+      },
+    ],
+    returns: "Reminders grouped by list",
+    example: "reminders_list({includeCompleted: true})",
+  },
+];
+
+// Generate describe output
+function describeAll(): string {
+  const lines = ["Available operations for Machina:\n"];
+  for (const op of operations) {
+    const requiredParams = op.parameters
+      .filter((p) => p.required)
+      .map((p) => p.name)
+      .join(", ");
+    lines.push(
+      `**${op.name}**${requiredParams ? `(${requiredParams})` : ""} - ${op.description}`,
+    );
+  }
+  lines.push(
+    "\nCall with action='describe', params={operation: 'name'} for detailed docs.",
+  );
+  return lines.join("\n");
+}
+
+function describeOperation(opName: string): string {
+  const op = operations.find((o) => o.name === opName);
+  if (!op) {
+    return `Unknown operation: ${opName}\n\nAvailable: ${operations.map((o) => o.name).join(", ")}`;
+  }
+
+  const lines = [`**${op.name}**\n${op.description}\n`];
+
+  if (op.parameters.length > 0) {
+    lines.push("Parameters:");
+    for (const p of op.parameters) {
+      const req = p.required ? "required" : `optional, default: ${p.default}`;
+      lines.push(`  - ${p.name} (${p.type}, ${req}): ${p.description}`);
+    }
+  }
+
+  lines.push(`\nReturns: ${op.returns}`);
+  if (op.example) {
+    lines.push(`\nExample: ${op.example}`);
+  }
+
+  return lines.join("\n");
+}
+
 // Run AppleScript and return result
 async function runAppleScript(script: string): Promise<string> {
   try {
@@ -44,102 +221,16 @@ async function runAppleScript(script: string): Promise<string> {
   }
 }
 
-// Tool definitions
-const tools = [
-  {
-    name: "contacts_search",
-    description: "Search for contacts by name",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Name to search for" },
-      },
-      required: ["name"],
-    },
-  },
-  {
-    name: "messages_unread",
-    description: "Get unread iMessages",
-    inputSchema: {
-      type: "object",
-      properties: {
-        limit: {
-          type: "number",
-          description: "Max messages to return",
-          default: 10,
-        },
-      },
-    },
-  },
-  {
-    name: "messages_send",
-    description: "Send an iMessage",
-    inputSchema: {
-      type: "object",
-      properties: {
-        to: { type: "string", description: "Phone number or email to send to" },
-        message: { type: "string", description: "Message text" },
-      },
-      required: ["to", "message"],
-    },
-  },
-  {
-    name: "messages_read",
-    description: "Read recent messages from a contact",
-    inputSchema: {
-      type: "object",
-      properties: {
-        contact: { type: "string", description: "Phone number or name" },
-        limit: { type: "number", description: "Max messages", default: 10 },
-      },
-      required: ["contact"],
-    },
-  },
-  {
-    name: "calendar_list",
-    description: "List upcoming calendar events",
-    inputSchema: {
-      type: "object",
-      properties: {
-        days: { type: "number", description: "Days ahead to look", default: 7 },
-      },
-    },
-  },
-  {
-    name: "notes_list",
-    description: "List recent notes",
-    inputSchema: {
-      type: "object",
-      properties: {
-        limit: { type: "number", description: "Max notes", default: 10 },
-      },
-    },
-  },
-  {
-    name: "reminders_list",
-    description: "List reminders",
-    inputSchema: {
-      type: "object",
-      properties: {
-        includeCompleted: {
-          type: "boolean",
-          description: "Include completed",
-          default: false,
-        },
-      },
-    },
-  },
-];
-
-// Tool handlers
-async function handleTool(
-  name: string,
-  args: Record<string, any>,
+// Operation handlers
+async function executeOperation(
+  action: string,
+  params: Record<string, any>,
 ): Promise<string> {
-  switch (name) {
+  switch (action) {
     case "contacts_search": {
+      if (!params.name) throw new Error("Missing required parameter: name");
       const script = `tell application "Contacts"
-        set matchingPeople to (every person whose name contains "${args.name}")
+        set matchingPeople to (every person whose name contains "${params.name}")
         set results to {}
         repeat with p in matchingPeople
           set pName to name of p
@@ -155,8 +246,7 @@ async function handleTool(
     }
 
     case "messages_unread": {
-      const limit = args.limit || 10;
-      // Use sqlite to read messages directly - more reliable than AppleScript
+      const limit = params.limit || 10;
       const { stdout } = await execAsync(
         `sqlite3 ~/Library/Messages/chat.db "SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date, h.id as sender, m.text FROM message m LEFT JOIN handle h ON m.handle_id = h.ROWID WHERE m.text IS NOT NULL ORDER BY m.date DESC LIMIT ${limit}"`,
       );
@@ -164,26 +254,30 @@ async function handleTool(
     }
 
     case "messages_send": {
+      if (!params.to) throw new Error("Missing required parameter: to");
+      if (!params.message)
+        throw new Error("Missing required parameter: message");
       const script = `tell application "Messages"
         set targetService to 1st account whose service type = iMessage
-        set targetBuddy to participant "${args.to}" of targetService
-        send "${args.message.replace(/"/g, '\\"')}" to targetBuddy
-        return "Message sent to ${args.to}"
+        set targetBuddy to participant "${params.to}" of targetService
+        send "${params.message.replace(/"/g, '\\"')}" to targetBuddy
+        return "Message sent to ${params.to}"
       end tell`;
       return await runAppleScript(script);
     }
 
     case "messages_read": {
-      const limit = args.limit || 10;
-      // Use sqlite to read messages from specific contact
+      if (!params.contact)
+        throw new Error("Missing required parameter: contact");
+      const limit = params.limit || 10;
       const { stdout } = await execAsync(
-        `sqlite3 ~/Library/Messages/chat.db "SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date, CASE WHEN m.is_from_me THEN 'Me' ELSE h.id END as sender, m.text FROM message m LEFT JOIN handle h ON m.handle_id = h.ROWID WHERE h.id LIKE '%${args.contact}%' AND m.text IS NOT NULL ORDER BY m.date DESC LIMIT ${limit}"`,
+        `sqlite3 ~/Library/Messages/chat.db "SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date, CASE WHEN m.is_from_me THEN 'Me' ELSE h.id END as sender, m.text FROM message m LEFT JOIN handle h ON m.handle_id = h.ROWID WHERE h.id LIKE '%${params.contact}%' AND m.text IS NOT NULL ORDER BY m.date DESC LIMIT ${limit}"`,
       );
-      return stdout.trim() || `No messages found for ${args.contact}`;
+      return stdout.trim() || `No messages found for ${params.contact}`;
     }
 
     case "calendar_list": {
-      const days = args.days || 7;
+      const days = params.days || 7;
       const script = `tell application "Calendar"
         set startDate to current date
         set endDate to startDate + (${days} * days)
@@ -202,7 +296,7 @@ async function handleTool(
     }
 
     case "notes_list": {
-      const limit = args.limit || 10;
+      const limit = params.limit || 10;
       const script = `tell application "Notes"
         set noteList to {}
         set allNotes to notes
@@ -222,7 +316,7 @@ async function handleTool(
       const script = `tell application "Reminders"
         set reminderList to {}
         repeat with l in lists
-          set rems to reminders of l whose completed is ${args.includeCompleted ? "true" : "false"}
+          set rems to reminders of l whose completed is ${params.includeCompleted ? "true" : "false"}
           repeat with r in rems
             set remName to name of r
             set remList to name of l
@@ -235,9 +329,54 @@ async function handleTool(
     }
 
     default:
-      throw new Error(`Unknown tool: ${name}`);
+      throw new Error(
+        `Unknown operation: ${action}\n\nAvailable: ${operations.map((o) => o.name).join(", ")}`,
+      );
   }
 }
+
+// Handle the machina gateway tool
+async function handleMachinaTool(args: Record<string, any>): Promise<string> {
+  const action = args.action as string;
+  const params = (args.params || {}) as Record<string, any>;
+
+  if (!action) {
+    return describeAll();
+  }
+
+  if (action === "describe") {
+    if (params.operation) {
+      return describeOperation(params.operation);
+    }
+    return describeAll();
+  }
+
+  return await executeOperation(action, params);
+}
+
+// Single gateway tool with progressive disclosure
+const tools = [
+  {
+    name: "machina",
+    description:
+      "Access Mac capabilities (Messages, Contacts, Calendar, Notes, Reminders). " +
+      "Top operations: messages_unread, messages_send(to, message), contacts_search(name) +4 more",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          description: "Operation to execute, or 'describe' for help",
+        },
+        params: {
+          type: "object",
+          description: "Parameters for the operation",
+        },
+      },
+      required: ["action"],
+    },
+  },
+];
 
 // Bearer token auth middleware
 function authenticate(req: Request, res: Response, next: NextFunction) {
@@ -267,22 +406,31 @@ function createServer(): Server {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    console.log("Listing tools");
+    console.log("Listing tools (progressive disclosure: 1 gateway tool)");
     return { tools };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
-    console.log(`Calling tool ${name} with args:`, JSON.stringify(args));
+    console.log(`Tool call: ${name}, action: ${args?.action || "none"}`);
+
+    if (name !== "machina") {
+      return {
+        content: [
+          { type: "text", text: `Unknown tool: ${name}. Use 'machina' tool.` },
+        ],
+        isError: true,
+      };
+    }
 
     try {
-      const result = await handleTool(name, args || {});
-      console.log(`Tool ${name} result:`, result.slice(0, 200));
+      const result = await handleMachinaTool(args || {});
+      console.log(`Result preview: ${result.slice(0, 100)}...`);
       return {
         content: [{ type: "text", text: result }],
       };
     } catch (error: any) {
-      console.error(`Tool ${name} error:`, error.message);
+      console.error(`Error:`, error.message);
       return {
         content: [{ type: "text", text: `Error: ${error.message}` }],
         isError: true,
@@ -387,5 +535,8 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`Machina MCP gateway running on http://0.0.0.0:${PORT}`);
   console.log(`MCP endpoint: POST /mcp`);
   console.log(`Health check: GET /health`);
-  console.log(`\nAvailable tools: ${tools.map((t) => t.name).join(", ")}`);
+  console.log(
+    `\nProgressive disclosure: 1 gateway tool with ${operations.length} operations`,
+  );
+  console.log(`Operations: ${operations.map((o) => o.name).join(", ")}`);
 });
