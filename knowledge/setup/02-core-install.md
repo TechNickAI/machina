@@ -72,7 +72,7 @@ export MACHINA_TOKEN=$(cat ~/machina/config/.env | grep MACHINA_TOKEN | cut -d= 
 nohup bun run server/index.ts >> ~/machina/logs/gateway.log 2>&1 &
 ```
 
-7. **Verify**: `curl http://localhost:8080/health` should return `{"status":"ok","version":"1.0.0"}`
+7. **Verify**: `curl http://localhost:8080/health` should return `{"status":"ok","version":"..."}`
 
 ## WhatsApp Bridge (Optional)
 

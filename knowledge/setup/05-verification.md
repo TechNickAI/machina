@@ -150,4 +150,4 @@ From another device on your Tailscale network:
 curl https://<TAILSCALE_HOST>/health
 ```
 
-Should return `{"status":"ok","version":"1.0.0"}`.
+Should return `{"status":"ok","version":"..."}` with current version.

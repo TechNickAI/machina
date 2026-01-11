@@ -41,7 +41,7 @@ From another device on your Tailscale network:
 curl https://<your-hostname>.ts.net/health
 ```
 
-Should return `{"status":"ok","version":"1.0.0"}`.
+Should return `{"status":"ok","version":"..."}` with current version.
 
 ## Public Access (Optional)
 
