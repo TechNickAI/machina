@@ -11,8 +11,9 @@ logs/
 # macOS
 .DS_Store
 
-# Node
+# Node/Bun
 node_modules/
+bun.lockb
 
 # Editor
 .vscode/

@@ -24,9 +24,9 @@ Claude will pull latest, rebuild components, restart services, verify.
 
 ## Version Checking
 
-Current version is in `~/machina/VERSION`.
+Current version is in `package.json`.
 
-Check for updates via GitHub Releases API - compare local version to latest release tag.
+Check for updates via `npm view machina-mcp version` or GitHub Releases API.
 
 ## Release History
 

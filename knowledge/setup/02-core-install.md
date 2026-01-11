@@ -8,56 +8,56 @@ Create the machina directories:
 
 ```
 ~/machina/
-├── components/     # Cloned repos live here
 ├── config/         # .env with MACHINA_TOKEN
 └── logs/           # Service logs
 ```
 
-## Component Repos
+## Gateway (Required)
 
-### apple-mcp (Required)
+The gateway is an npm package:
 
-Clone from `TechNickAI/apple-mcp` to `~/machina/components/apple-mcp`.
+```bash
+bunx machina-mcp
+```
 
-This is our fork of supermemoryai/apple-mcp. Install dependencies with Bun.
+Or install globally for LaunchD:
 
-Verify: build succeeds.
+```bash
+bun add -g machina-mcp
+```
 
-### whatsapp-mcp (Optional)
+See `components/gateway.md` for configuration details.
+
+## apple-mcp (Auto-installed)
+
+The gateway spawns apple-mcp automatically. It uses `bunx apple-mcp` to run it on demand.
+
+If you want to pre-install for faster startup:
+
+```bash
+bun add -g apple-mcp
+```
+
+## WhatsApp Bridge (Optional)
 
 Only if user wants WhatsApp support.
 
-Clone from `lharries/whatsapp-mcp` to `~/machina/components/whatsapp-mcp`.
-
-Build the Go bridge in the `whatsapp-bridge` subdirectory. Install Python dependencies.
-
-Verify: Go binary runs with `--help`.
-
-### Gateway (Required)
-
-The gateway is generated, not cloned. Create a Hono server in
-`~/machina/components/gateway/`.
-
-See `components/gateway.md` for the implementation spec.
+Clone from `lharries/whatsapp-mcp` and build the Go bridge.
+Run on port 3001. The gateway proxies WhatsApp requests to it.
 
 ## Access Token
 
 Generate a random token and save to `~/machina/config/.env` as `MACHINA_TOKEN`.
 
-This token authenticates all API requests. Store it securely.
+This token authenticates all MCP requests. Store it securely.
 
 ## Assessing Installation State
 
-There's no config file listing enabled services. Assess the system directly:
-
-- What components exist in `~/machina/components/`?
-- What LaunchD services are running?
-
-If a component directory exists and builds successfully, it's available.
-If its LaunchD service is running, it's active.
+- Is machina-mcp installed? (`which machina-mcp` or check global bun packages)
+- Is the LaunchD service running?
+- Can you reach the health endpoint?
 
 ## Next Steps
 
-1. Configure each component (see `components/` docs)
-2. Set up LaunchD (see `04-launchd.md`)
-3. Verify everything (see `05-verification.md`)
+1. Set up LaunchD (see `04-launchd.md`)
+2. Verify everything (see `05-verification.md`)

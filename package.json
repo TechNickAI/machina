@@ -1,0 +1,38 @@
+{
+  "name": "machina-mcp",
+  "version": "0.1.0",
+  "description": "MCP server exposing Mac capabilities (iMessage, Mail, Calendar, Notes, Reminders, WhatsApp) for AI agents",
+  "type": "module",
+  "main": "server/index.ts",
+  "bin": {
+    "machina-mcp": "server/index.ts"
+  },
+  "scripts": {
+    "start": "bun run server/index.ts",
+    "dev": "bun --watch server/index.ts"
+  },
+  "keywords": [
+    "mcp",
+    "ai",
+    "imessage",
+    "whatsapp",
+    "macos",
+    "automation",
+    "anthropic",
+    "claude"
+  ],
+  "author": "Nick Sullivan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TechNickAI/machina"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "express": "^5.0.0",
+    "zod": "^3.24.0"
+  }
+}

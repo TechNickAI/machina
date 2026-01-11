@@ -26,8 +26,8 @@ Create a LaunchD plist `com.machina.selfupdate` that:
 
 ## Version Checking
 
-Can also check via GitHub Releases API - compare local VERSION file to latest release
-tag. This catches releases even if git history differs.
+Can also check via `npm view machina-mcp version` - compare installed version to latest.
+This catches releases even if git history differs.
 
 ## Alternative: Pull Only
 

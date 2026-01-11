@@ -10,9 +10,9 @@ User opens Claude Code in ~/machina and says "Update machina"
 
 1. **Pull knowledge repo** - Fetch and pull latest from main. Report conflicts if any.
 
-2. **Update component repos** - For each installed component, pull latest and rebuild.
+2. **Update machina-mcp** - Run `bun update -g machina-mcp` to get latest version.
 
-3. **Check gateway spec** - If gateway.md changed, may need to regenerate gateway code.
+3. **Update apple-mcp** - Run `bun update -g apple-mcp` if installed globally.
 
 4. **Restart services** - Stop and start the LaunchD services.
 
@@ -22,8 +22,13 @@ User opens Claude Code in ~/machina and says "Update machina"
 
 ## Rollback
 
-If update breaks something, checkout previous commit in affected repo, rebuild,
-restart services.
+If update breaks something, install previous version:
+
+```bash
+bun add -g machina-mcp@0.1.0
+```
+
+Then restart services.
 
 ## When to Update
 

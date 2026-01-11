@@ -5,7 +5,7 @@
 Give AI agents remote access to iMessage, WhatsApp, Mail, Calendar, Notes, Reminders, and more. Installed and maintained by Claude Code - not bash scripts.
 
 ```
-Cloud AI ──HTTPS──▶ Machina ──▶ Your Mac's capabilities
+Cloud AI ──MCP over HTTP──▶ Machina ──▶ Your Mac's capabilities
 ```
 
 ## The Problem
@@ -18,8 +18,8 @@ Existing solutions are fragmented: separate MCP servers for each capability, loc
 
 Machina provides:
 
-- **Unified Gateway** - One HTTPS API to all Mac capabilities
-- **Remote Access** - Cloud AI agents can reach your Mac from anywhere
+- **MCP Gateway** - Standard MCP server exposing all Mac capabilities
+- **Remote Access** - Cloud AI agents can reach your Mac via Tailscale
 - **AI-Native Installation** - Claude reads the knowledge, adapts to your system, installs everything
 - **Self-Maintaining** - Automated updates, health checks, auto-recovery
 
@@ -82,25 +82,28 @@ Machina orchestrates these existing projects - it doesn't reinvent them.
 ## Architecture
 
 ```
-Cloud AI (your agent)
+Cloud AI (Carmenta, etc.)
          │
-         │ HTTPS + Token + Tailscale
+         │ MCP over Streamable HTTP
+         │ Bearer token auth
+         │ Tailscale for network
          ▼
 ┌─────────────────────────────────────────┐
-│              Machina                    │
+│           machina-mcp                   │
 │                                         │
-│   HTTP Gateway (Hono on Bun)            │
+│   MCP Gateway (port 8080)               │
 │         │                               │
 │   ┌─────┴─────┬───────────┐             │
 │   ▼           ▼           ▼             │
 │ apple-mcp  whatsapp    (future)         │
-│             bridge                      │
+│  (stdio)    bridge                      │
+│            (3001)                       │
 │                                         │
 │   AppleScript ←→ Native macOS           │
 └─────────────────────────────────────────┘
 ```
 
-Components are cloned to `~/machina/components/` and run as LaunchD services.
+The gateway is an npm package (`machina-mcp`) running as a LaunchD service.
 
 ## Updates
 

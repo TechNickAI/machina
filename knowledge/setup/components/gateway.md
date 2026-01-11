@@ -1,105 +1,74 @@
-# Gateway
+# MCP Gateway
 
-The HTTP entry point for all Machina capabilities. Validates access tokens and routes
-requests to the appropriate backend.
+The MCP entry point for all Machina capabilities. Uses Streamable HTTP transport with
+bearer token authentication.
 
-## Location
+## Installation
 
-`~/machina/components/gateway/`
-
-## Technology
-
-- Hono (TypeScript HTTP framework)
-- Bun runtime
-
-## Implementation
-
-The gateway is generated, not cloned. Create a Hono server with:
-
-### Configuration
-
-- `MACHINA_TOKEN` from environment
-- Port 8080
-- Bind to `0.0.0.0` (not localhost) for Tailscale remote access
-
-### Endpoints
-
-**Health check** (no auth): `GET /health`
-Returns `{ status: "ok", timestamp: "..." }`
-
-**API** (requires Bearer token): `POST /api/machina`
-Body: `{ action: "...", params: {...} }`
-
-### Token Auth
-
-Middleware on `/api/*` validates `Authorization: Bearer <token>` header.
-
-### Actions
-
-**describe**: Returns available services and operations.
-
-**service.operation**: Routes to appropriate handler.
-
-Services: messages, mail, calendar, contacts, notes, reminders
-
-### Service Handlers
-
-Import utilities from apple-mcp and call them:
-
-```typescript
-// Example structure - Claude implements based on apple-mcp exports
-import { sendMessage } from "../apple-mcp/utils/messages";
-import { searchContacts } from "../apple-mcp/utils/contacts";
-
-async function handleMessages(operation: string, params: any) {
-  switch (operation) {
-    case "send":
-      return await sendMessage(params.to, params.body);
-    // ... other operations
-  }
-}
+```bash
+bunx machina-mcp
 ```
 
-For WhatsApp, call the Go bridge HTTP API on port 3001.
+Or install globally:
 
-## API Reference
-
-### Health Check
-
-```
-GET /health
-→ { "status": "ok", "timestamp": "2026-01-11T..." }
+```bash
+bun add -g machina-mcp
 ```
 
-### Describe
+## Configuration
+
+Environment variables:
+
+- `MACHINA_TOKEN` - Required. Bearer token for authentication.
+- `MACHINA_PORT` - Optional. Port to listen on (default: 8080).
+
+## Architecture
 
 ```
-POST /api/machina
-Authorization: Bearer <token>
-{ "action": "describe" }
-→ { services: { messages: {...}, mail: {...}, ... } }
+AI Agent (Carmenta)
+    ↓ MCP over Streamable HTTP
+    ↓ Bearer token auth
+Machina Gateway (port 8080)
+    ↓ spawns
+apple-mcp (stdio) → iMessage, Mail, Calendar, Notes, Reminders, Contacts, Maps
+    ↓ proxies to
+WhatsApp bridge (port 3001) → WhatsApp Web
 ```
 
-### Send Message
+The gateway:
 
-```
-POST /api/machina
-Authorization: Bearer <token>
-{ "action": "messages.send", "params": { "to": "Mom", "body": "Hi!" } }
-```
+1. Accepts MCP requests over Streamable HTTP
+2. Validates bearer token
+3. Spawns apple-mcp as subprocess for Apple services
+4. Proxies WhatsApp requests to the Go bridge on port 3001
+
+## Endpoints
+
+- `POST /mcp` - MCP messages (requires auth)
+- `GET /mcp` - SSE notifications (requires auth)
+- `DELETE /mcp` - Session termination (requires auth)
+- `GET /health` - Health check (no auth)
 
 ## Security
 
-- Token must be set via environment variable
-- Never commit token to git
+- Bearer token via `Authorization: Bearer <token>` header
+- Session isolation via `Mcp-Session-Id` header
+- Bind to `0.0.0.0` for Tailscale remote access
 - Tailscale provides HTTPS and network isolation
-- Consider rate limiting for production
 
-## Extending
+## Available Tools
 
-To add new capabilities:
+All apple-mcp tools are automatically exposed:
 
-1. Add service to describe response
-2. Add handler function
-3. Import utilities from component repo
-4. Add case to action router
+- **messages** - Send/read iMessages, get unread
+- **mail** - Send/search email, list mailboxes
+- **calendar** - Create/search events
+- **notes** - Create/search notes
+- **reminders** - Create/search reminders
+- **contacts** - Search contacts
+- **maps** - Search locations, get directions
+
+WhatsApp tools (when bridge is running):
+
+- **whatsapp.send** - Send WhatsApp message
+- **whatsapp.read** - Read recent messages
