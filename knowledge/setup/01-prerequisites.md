@@ -27,10 +27,19 @@ Before installing machina, verify these requirements are met.
 
 ### Automation Permission
 
-Required for AppleScript to control apps (Messages, Mail, Calendar, etc.).
+Required for AppleScript to control apps (Messages, Mail, Calendar, Contacts, Notes, Reminders).
 
-First AppleScript call will trigger a permission prompt. Grant access when asked, or
-configure in System Preferences → Privacy & Security → Automation.
+**Expect multiple permission popups** on first run - one for each app. Grant all of them.
+Configure in System Preferences → Privacy & Security → Automation.
+
+Apps that need automation access:
+
+- Contacts
+- Messages
+- Mail
+- Calendar
+- Notes
+- Reminders
 
 ### Full Disk Access
 
