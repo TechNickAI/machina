@@ -50,50 +50,22 @@ interface Operation {
 }
 
 const operations: Operation[] = [
-  {
-    name: "contacts_search",
-    description: "Search for contacts by name",
-    parameters: [
-      {
-        name: "name",
-        type: "string",
-        required: true,
-        description: "Name to search for",
-      },
-    ],
-    returns: "List of matching contacts with phone numbers",
-    example: "machina(action='contacts_search', params={name: 'John'})",
-  },
-  {
-    name: "messages_unread",
-    description: "Get recent iMessages",
-    parameters: [
-      {
-        name: "limit",
-        type: "number",
-        required: false,
-        description: "Max messages to return",
-        default: 10,
-      },
-    ],
-    returns: "Recent messages with date, sender, and text",
-    example: "machina(action='messages_unread', params={limit: 5})",
-  },
+  // ============== MESSAGES ==============
   {
     name: "messages_send",
-    description: "Send an iMessage",
+    description: "Send an iMessage to a contact",
     parameters: [
       {
         name: "to",
         type: "string",
         required: true,
-        description: "Phone number or email to send to",
+        description: "Phone number (e.g., +15551234567) or email address",
       },
       {
         name: "message",
         type: "string",
         required: true,
-        description: "Message text",
+        description: "Message text to send",
       },
     ],
     returns: "Confirmation message",
@@ -102,45 +74,177 @@ const operations: Operation[] = [
   },
   {
     name: "messages_read",
-    description: "Read recent messages from a specific contact",
+    description: "Read recent messages from a specific contact or conversation",
     parameters: [
       {
         name: "contact",
         type: "string",
         required: true,
-        description: "Phone number or name",
+        description: "Phone number, email, or partial name to filter by",
       },
       {
         name: "limit",
         type: "number",
         required: false,
-        description: "Max messages",
-        default: 10,
+        description: "Maximum number of messages to return",
+        default: 20,
       },
     ],
-    returns: "Messages with date, sender (Me or contact), and text",
+    returns: "Messages with timestamp, sender (Me or contact), and text",
     example:
-      "machina(action='messages_read', params={contact: '+15551234567', limit: 20})",
+      "machina(action='messages_read', params={contact: '+15551234567', limit: 50})",
   },
+  {
+    name: "messages_recent",
+    description: "Get most recent messages across all conversations",
+    parameters: [
+      {
+        name: "limit",
+        type: "number",
+        required: false,
+        description: "Maximum number of messages to return",
+        default: 20,
+      },
+    ],
+    returns: "Recent messages with timestamp, sender, and text",
+    example: "machina(action='messages_recent', params={limit: 10})",
+  },
+  {
+    name: "messages_search",
+    description: "Search messages by text content",
+    parameters: [
+      {
+        name: "query",
+        type: "string",
+        required: true,
+        description: "Text to search for in message content",
+      },
+      {
+        name: "limit",
+        type: "number",
+        required: false,
+        description: "Maximum number of results",
+        default: 20,
+      },
+    ],
+    returns: "Matching messages with timestamp, sender, and text",
+    example:
+      "machina(action='messages_search', params={query: 'meeting tomorrow', limit: 10})",
+  },
+  {
+    name: "messages_conversations",
+    description: "List all conversations/chats with recent activity",
+    parameters: [
+      {
+        name: "limit",
+        type: "number",
+        required: false,
+        description: "Maximum number of conversations to return",
+        default: 20,
+      },
+    ],
+    returns:
+      "List of conversations with participant info and last message preview",
+    example: "machina(action='messages_conversations', params={limit: 10})",
+  },
+
+  // ============== NOTES ==============
   {
     name: "notes_list",
-    description: "List recent notes",
+    description: "List notes from Apple Notes",
     parameters: [
+      {
+        name: "folder",
+        type: "string",
+        required: false,
+        description: "Folder name to list from (default: all folders)",
+      },
       {
         name: "limit",
         type: "number",
         required: false,
-        description: "Max notes to return",
+        description: "Maximum number of notes to return",
+        default: 20,
+      },
+    ],
+    returns: "List of notes with title and folder",
+    example: "machina(action='notes_list', params={limit: 10})",
+  },
+  {
+    name: "notes_read",
+    description: "Read the content of a specific note",
+    parameters: [
+      {
+        name: "title",
+        type: "string",
+        required: true,
+        description: "Title of the note to read (exact or partial match)",
+      },
+    ],
+    returns: "Note content as plain text",
+    example: "machina(action='notes_read', params={title: 'Meeting Notes'})",
+  },
+  {
+    name: "notes_create",
+    description: "Create a new note in Apple Notes",
+    parameters: [
+      {
+        name: "title",
+        type: "string",
+        required: true,
+        description: "Title for the new note",
+      },
+      {
+        name: "body",
+        type: "string",
+        required: true,
+        description: "Content of the note",
+      },
+      {
+        name: "folder",
+        type: "string",
+        required: false,
+        description: "Folder to create note in (default: Notes)",
+        default: "Notes",
+      },
+    ],
+    returns: "Confirmation with note title",
+    example:
+      "machina(action='notes_create', params={title: 'New Note', body: 'Content here'})",
+  },
+  {
+    name: "notes_search",
+    description: "Search notes by content or title",
+    parameters: [
+      {
+        name: "query",
+        type: "string",
+        required: true,
+        description: "Text to search for",
+      },
+      {
+        name: "limit",
+        type: "number",
+        required: false,
+        description: "Maximum number of results",
         default: 10,
       },
     ],
-    returns: "List of note titles",
-    example: "machina(action='notes_list', params={limit: 5})",
+    returns: "Matching notes with title and preview",
+    example: "machina(action='notes_search', params={query: 'project'})",
   },
+
+  // ============== REMINDERS ==============
   {
     name: "reminders_list",
-    description: "List reminders",
+    description: "List reminders from Apple Reminders",
     parameters: [
+      {
+        name: "list",
+        type: "string",
+        required: false,
+        description: "Specific list to show (default: all lists)",
+      },
       {
         name: "includeCompleted",
         type: "boolean",
@@ -149,24 +253,143 @@ const operations: Operation[] = [
         default: false,
       },
     ],
-    returns: "Reminders grouped by list",
+    returns: "Reminders grouped by list with due dates",
     example:
-      "machina(action='reminders_list', params={includeCompleted: true})",
+      "machina(action='reminders_list', params={includeCompleted: false})",
+  },
+  {
+    name: "reminders_create",
+    description: "Create a new reminder",
+    parameters: [
+      {
+        name: "title",
+        type: "string",
+        required: true,
+        description: "Reminder title/text",
+      },
+      {
+        name: "list",
+        type: "string",
+        required: false,
+        description: "List to add reminder to (default: Reminders)",
+        default: "Reminders",
+      },
+      {
+        name: "dueDate",
+        type: "string",
+        required: false,
+        description: "Due date in ISO format (e.g., 2024-12-25T10:00:00)",
+      },
+      {
+        name: "notes",
+        type: "string",
+        required: false,
+        description: "Additional notes for the reminder",
+      },
+    ],
+    returns: "Confirmation with reminder title",
+    example:
+      "machina(action='reminders_create', params={title: 'Call mom', list: 'Personal'})",
+  },
+  {
+    name: "reminders_complete",
+    description: "Mark a reminder as completed",
+    parameters: [
+      {
+        name: "title",
+        type: "string",
+        required: true,
+        description:
+          "Title of the reminder to complete (exact or partial match)",
+      },
+      {
+        name: "list",
+        type: "string",
+        required: false,
+        description: "List the reminder is in (helps find exact match)",
+      },
+    ],
+    returns: "Confirmation message",
+    example: "machina(action='reminders_complete', params={title: 'Call mom'})",
+  },
+
+  // ============== CONTACTS ==============
+  {
+    name: "contacts_search",
+    description: "Search for contacts by name",
+    parameters: [
+      {
+        name: "name",
+        type: "string",
+        required: true,
+        description: "Name to search for (partial match)",
+      },
+    ],
+    returns: "List of matching contacts with phone numbers and emails",
+    example: "machina(action='contacts_search', params={name: 'John'})",
+  },
+  {
+    name: "contacts_get",
+    description: "Get full details of a contact",
+    parameters: [
+      {
+        name: "name",
+        type: "string",
+        required: true,
+        description: "Exact or partial name of the contact",
+      },
+    ],
+    returns: "Full contact details including phones, emails, addresses",
+    example: "machina(action='contacts_get', params={name: 'John Smith'})",
+  },
+
+  // ============== RAW APPLESCRIPT ==============
+  {
+    name: "raw_applescript",
+    description:
+      "Execute arbitrary AppleScript. Use this escape hatch for operations not covered by standard actions. " +
+      "Be careful - this runs code directly on the Mac.",
+    parameters: [
+      {
+        name: "script",
+        type: "string",
+        required: true,
+        description: "AppleScript code to execute",
+      },
+    ],
+    returns: "AppleScript execution result",
+    example:
+      "machina(action='raw_applescript', params={script: 'tell application \"Finder\" to get name of startup disk'})",
   },
 ];
 
 // Generate describe output
 function describeAll(): string {
   const lines = ["Available operations for Machina:\n"];
-  for (const op of operations) {
-    const requiredParams = op.parameters
-      .filter((p) => p.required)
-      .map((p) => p.name)
-      .join(", ");
-    lines.push(
-      `**${op.name}**${requiredParams ? `(${requiredParams})` : ""} - ${op.description}`,
-    );
+
+  // Group by category
+  const categories = {
+    Messages: operations.filter((o) => o.name.startsWith("messages_")),
+    Notes: operations.filter((o) => o.name.startsWith("notes_")),
+    Reminders: operations.filter((o) => o.name.startsWith("reminders_")),
+    Contacts: operations.filter((o) => o.name.startsWith("contacts_")),
+    Advanced: operations.filter((o) => o.name.startsWith("raw_")),
+  };
+
+  for (const [category, ops] of Object.entries(categories)) {
+    if (ops.length === 0) continue;
+    lines.push(`\n**${category}:**`);
+    for (const op of ops) {
+      const requiredParams = op.parameters
+        .filter((p) => p.required)
+        .map((p) => p.name)
+        .join(", ");
+      lines.push(
+        `  ${op.name}${requiredParams ? `(${requiredParams})` : ""} - ${op.description.split(".")[0]}`,
+      );
+    }
   }
+
   lines.push(
     "\nCall with action='describe', params={operation: 'name'} for detailed docs.",
   );
@@ -209,38 +432,25 @@ async function runAppleScript(script: string): Promise<string> {
   }
 }
 
+// SQLite query helper for Messages
+async function queryMessagesDB(sql: string): Promise<string> {
+  try {
+    const { stdout } = await execAsync(
+      `sqlite3 ~/Library/Messages/chat.db "${sql.replace(/"/g, '\\"')}"`,
+    );
+    return stdout.trim();
+  } catch (error: any) {
+    throw new Error(`Messages database error: ${error.message}`);
+  }
+}
+
 // Operation handlers
 async function executeOperation(
   action: string,
   params: Record<string, any>,
 ): Promise<string> {
   switch (action) {
-    case "contacts_search": {
-      if (!params.name) throw new Error("Missing required parameter: name");
-      const script = `tell application "Contacts"
-        set matchingPeople to (every person whose name contains "${params.name}")
-        set results to {}
-        repeat with p in matchingPeople
-          set pName to name of p
-          set pPhones to {}
-          repeat with ph in phones of p
-            set end of pPhones to value of ph
-          end repeat
-          set end of results to pName & ": " & (pPhones as text)
-        end repeat
-        return results as text
-      end tell`;
-      return await runAppleScript(script);
-    }
-
-    case "messages_unread": {
-      const limit = params.limit || 10;
-      const { stdout } = await execAsync(
-        `sqlite3 ~/Library/Messages/chat.db "SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date, h.id as sender, m.text FROM message m LEFT JOIN handle h ON m.handle_id = h.ROWID WHERE m.text IS NOT NULL ORDER BY m.date DESC LIMIT ${limit}"`,
-      );
-      return stdout.trim() || "No recent messages found";
-    }
-
+    // ============== MESSAGES ==============
     case "messages_send": {
       if (!params.to) throw new Error("Missing required parameter: to");
       if (!params.message)
@@ -257,39 +467,145 @@ async function executeOperation(
     case "messages_read": {
       if (!params.contact)
         throw new Error("Missing required parameter: contact");
-      const limit = params.limit || 10;
-      const { stdout } = await execAsync(
-        `sqlite3 ~/Library/Messages/chat.db "SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date, CASE WHEN m.is_from_me THEN 'Me' ELSE h.id END as sender, m.text FROM message m LEFT JOIN handle h ON m.handle_id = h.ROWID WHERE h.id LIKE '%${params.contact}%' AND m.text IS NOT NULL ORDER BY m.date DESC LIMIT ${limit}"`,
-      );
-      return stdout.trim() || `No messages found for ${params.contact}`;
+      const limit = params.limit || 20;
+      const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
+        CASE WHEN m.is_from_me THEN 'Me' ELSE h.id END as sender,
+        m.text
+        FROM message m
+        LEFT JOIN handle h ON m.handle_id = h.ROWID
+        WHERE h.id LIKE '%${params.contact}%' AND m.text IS NOT NULL
+        ORDER BY m.date DESC LIMIT ${limit}`;
+      const result = await queryMessagesDB(sql);
+      return result || `No messages found for ${params.contact}`;
     }
 
+    case "messages_recent": {
+      const limit = params.limit || 20;
+      const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
+        h.id as sender,
+        m.text
+        FROM message m
+        LEFT JOIN handle h ON m.handle_id = h.ROWID
+        WHERE m.text IS NOT NULL
+        ORDER BY m.date DESC LIMIT ${limit}`;
+      const result = await queryMessagesDB(sql);
+      return result || "No recent messages found";
+    }
+
+    case "messages_search": {
+      if (!params.query) throw new Error("Missing required parameter: query");
+      const limit = params.limit || 20;
+      const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
+        h.id as sender,
+        m.text
+        FROM message m
+        LEFT JOIN handle h ON m.handle_id = h.ROWID
+        WHERE m.text LIKE '%${params.query}%'
+        ORDER BY m.date DESC LIMIT ${limit}`;
+      const result = await queryMessagesDB(sql);
+      return result || `No messages found matching "${params.query}"`;
+    }
+
+    case "messages_conversations": {
+      const limit = params.limit || 20;
+      const sql = `SELECT
+        c.display_name as name,
+        h.id as participant,
+        (SELECT text FROM message WHERE cache_roomnames = c.room_name OR handle_id = h.ROWID ORDER BY date DESC LIMIT 1) as last_message,
+        datetime((SELECT date/1000000000 + 978307200 FROM message WHERE cache_roomnames = c.room_name OR handle_id = h.ROWID ORDER BY date DESC LIMIT 1), 'unixepoch', 'localtime') as last_date
+        FROM chat c
+        LEFT JOIN chat_handle_join chj ON c.ROWID = chj.chat_id
+        LEFT JOIN handle h ON chj.handle_id = h.ROWID
+        GROUP BY c.ROWID
+        ORDER BY last_date DESC
+        LIMIT ${limit}`;
+      const result = await queryMessagesDB(sql);
+      return result || "No conversations found";
+    }
+
+    // ============== NOTES ==============
     case "notes_list": {
-      const limit = params.limit || 10;
+      const limit = params.limit || 20;
+      const folderFilter = params.folder ? `of folder "${params.folder}"` : "";
       const script = `tell application "Notes"
         set noteList to {}
-        set allNotes to notes
+        set allNotes to notes ${folderFilter}
         set noteCount to count of allNotes
         if noteCount > ${limit} then set noteCount to ${limit}
         repeat with i from 1 to noteCount
           set n to item i of allNotes
           set noteTitle to name of n
-          set end of noteList to noteTitle
+          set noteFolder to name of container of n
+          set end of noteList to noteFolder & ": " & noteTitle
         end repeat
         return noteList as text
       end tell`;
       return await runAppleScript(script);
     }
 
+    case "notes_read": {
+      if (!params.title) throw new Error("Missing required parameter: title");
+      const script = `tell application "Notes"
+        set matchingNotes to (notes whose name contains "${params.title}")
+        if (count of matchingNotes) = 0 then
+          return "Note not found: ${params.title}"
+        end if
+        set theNote to item 1 of matchingNotes
+        return plaintext of theNote
+      end tell`;
+      return await runAppleScript(script);
+    }
+
+    case "notes_create": {
+      if (!params.title) throw new Error("Missing required parameter: title");
+      if (!params.body) throw new Error("Missing required parameter: body");
+      const folder = params.folder || "Notes";
+      const script = `tell application "Notes"
+        tell folder "${folder}"
+          make new note with properties {name:"${params.title}", body:"${params.body.replace(/"/g, '\\"')}"}
+        end tell
+        return "Created note: ${params.title}"
+      end tell`;
+      return await runAppleScript(script);
+    }
+
+    case "notes_search": {
+      if (!params.query) throw new Error("Missing required parameter: query");
+      const limit = params.limit || 10;
+      const script = `tell application "Notes"
+        set matchingNotes to (notes whose name contains "${params.query}" or plaintext contains "${params.query}")
+        set noteList to {}
+        set noteCount to count of matchingNotes
+        if noteCount > ${limit} then set noteCount to ${limit}
+        repeat with i from 1 to noteCount
+          set n to item i of matchingNotes
+          set noteTitle to name of n
+          set noteFolder to name of container of n
+          set end of noteList to noteFolder & ": " & noteTitle
+        end repeat
+        return noteList as text
+      end tell`;
+      return await runAppleScript(script);
+    }
+
+    // ============== REMINDERS ==============
     case "reminders_list": {
+      const listFilter = params.list ? `of list "${params.list}"` : "";
+      const completedFilter = params.includeCompleted
+        ? ""
+        : "whose completed is false";
       const script = `tell application "Reminders"
         set reminderList to {}
         repeat with l in lists
-          set rems to reminders of l whose completed is ${params.includeCompleted ? "true" : "false"}
+          set rems to (reminders of l ${completedFilter})
           repeat with r in rems
             set remName to name of r
             set remList to name of l
-            set end of reminderList to remList & ": " & remName
+            set remDue to ""
+            try
+              set remDue to " (due: " & (due date of r as string) & ")"
+            end try
+            set end of reminderList to remList & ": " & remName & remDue
           end repeat
         end repeat
         return reminderList as text
@@ -297,9 +613,122 @@ async function executeOperation(
       return await runAppleScript(script);
     }
 
+    case "reminders_create": {
+      if (!params.title) throw new Error("Missing required parameter: title");
+      const list = params.list || "Reminders";
+      let props = `{name:"${params.title}"`;
+      if (params.notes) {
+        props += `, body:"${params.notes.replace(/"/g, '\\"')}"`;
+      }
+      props += "}";
+
+      let script = `tell application "Reminders"
+        tell list "${list}"
+          set newReminder to make new reminder with properties ${props}`;
+
+      if (params.dueDate) {
+        script += `
+          set due date of newReminder to date "${params.dueDate}"`;
+      }
+
+      script += `
+        end tell
+        return "Created reminder: ${params.title}"
+      end tell`;
+      return await runAppleScript(script);
+    }
+
+    case "reminders_complete": {
+      if (!params.title) throw new Error("Missing required parameter: title");
+      const listFilter = params.list ? `of list "${params.list}"` : "";
+      const script = `tell application "Reminders"
+        set matchingReminders to (reminders ${listFilter} whose name contains "${params.title}" and completed is false)
+        if (count of matchingReminders) = 0 then
+          return "No incomplete reminder found matching: ${params.title}"
+        end if
+        set targetReminder to item 1 of matchingReminders
+        set completed of targetReminder to true
+        return "Completed: " & name of targetReminder
+      end tell`;
+      return await runAppleScript(script);
+    }
+
+    // ============== CONTACTS ==============
+    case "contacts_search": {
+      if (!params.name) throw new Error("Missing required parameter: name");
+      const script = `tell application "Contacts"
+        set matchingPeople to (every person whose name contains "${params.name}")
+        set results to {}
+        repeat with p in matchingPeople
+          set pName to name of p
+          set pPhones to {}
+          set pEmails to {}
+          repeat with ph in phones of p
+            set end of pPhones to value of ph
+          end repeat
+          repeat with em in emails of p
+            set end of pEmails to value of em
+          end repeat
+          set contactInfo to pName
+          if (count of pPhones) > 0 then set contactInfo to contactInfo & " | Phones: " & (pPhones as text)
+          if (count of pEmails) > 0 then set contactInfo to contactInfo & " | Emails: " & (pEmails as text)
+          set end of results to contactInfo
+        end repeat
+        return results as text
+      end tell`;
+      return await runAppleScript(script);
+    }
+
+    case "contacts_get": {
+      if (!params.name) throw new Error("Missing required parameter: name");
+      const script = `tell application "Contacts"
+        set matchingPeople to (every person whose name contains "${params.name}")
+        if (count of matchingPeople) = 0 then
+          return "Contact not found: ${params.name}"
+        end if
+        set p to item 1 of matchingPeople
+        set contactInfo to "Name: " & (name of p)
+
+        set pPhones to {}
+        repeat with ph in phones of p
+          set end of pPhones to (label of ph) & ": " & (value of ph)
+        end repeat
+        if (count of pPhones) > 0 then set contactInfo to contactInfo & "\\nPhones: " & (pPhones as text)
+
+        set pEmails to {}
+        repeat with em in emails of p
+          set end of pEmails to (label of em) & ": " & (value of em)
+        end repeat
+        if (count of pEmails) > 0 then set contactInfo to contactInfo & "\\nEmails: " & (pEmails as text)
+
+        set pAddresses to {}
+        repeat with addr in addresses of p
+          set end of pAddresses to (label of addr) & ": " & (formatted address of addr)
+        end repeat
+        if (count of pAddresses) > 0 then set contactInfo to contactInfo & "\\nAddresses: " & (pAddresses as text)
+
+        try
+          set contactInfo to contactInfo & "\\nBirthday: " & (birth date of p as string)
+        end try
+
+        try
+          set contactInfo to contactInfo & "\\nCompany: " & (organization of p)
+        end try
+
+        return contactInfo
+      end tell`;
+      return await runAppleScript(script);
+    }
+
+    // ============== RAW APPLESCRIPT ==============
+    case "raw_applescript": {
+      if (!params.script) throw new Error("Missing required parameter: script");
+      return await runAppleScript(params.script);
+    }
+
     default:
       throw new Error(
-        `Unknown operation: ${action}\n\nAvailable: ${operations.map((o) => o.name).join(", ")}`,
+        `Unknown operation: ${action}\n\nUse action='describe' to see available operations.`,
       );
   }
 }
@@ -328,8 +757,9 @@ const tools = [
   {
     name: "machina",
     description:
-      "Access Mac capabilities (Messages, Notes, Reminders, Contacts). " +
-      "Top operations: messages_unread, messages_send(to, message), notes_list, contacts_search(name) +2 more",
+      "Access Mac capabilities: Messages (send, read, search), Notes (list, read, create), " +
+      "Reminders (list, create, complete), Contacts (search, get). " +
+      "Use action='describe' to see all operations.",
     inputSchema: {
       type: "object",
       properties: {
