@@ -11,14 +11,26 @@ Smart setup and update for Machina. Detects current state and does the right thi
 
 ### 1. Detect Current State
 
-Check if Machina is already installed:
+Check if Machina is already installed by looking for installation artifacts:
+
+```bash
+# Check for config file (created during setup)
+ls ~/machina/config/.env 2>/dev/null
+
+# Check for LaunchD plist (created during setup)
+ls ~/Library/LaunchAgents/com.machina.gateway.plist 2>/dev/null
+```
+
+- **If config file exists** → Already installed, do UPDATE
+- **If config file doesn't exist** → Not installed, do SETUP
+
+Then check if service is running:
 
 ```bash
 curl -s http://localhost:8080/health
 ```
 
-- **If health check succeeds** → Already installed, do UPDATE
-- **If health check fails** → Not installed, do SETUP
+- **If installed but health fails** → Service down, restart it during UPDATE
 
 ### 2a. SETUP (Not Installed)
 
