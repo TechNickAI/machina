@@ -53,12 +53,13 @@ After setup completes:
 ```
 01-prerequisites.md  → Required software and permissions
 02-core-install.md   → Clone repos, create directories
+03-tailscale.md      → Remote access via Tailscale
 components/
-  ├── apple-services.md → apple-mcp setup
+  ├── apple-services.md → apple-mcp setup (deprecated, gateway handles directly)
   ├── whatsapp.md       → whatsapp-mcp setup
-  └── gateway.md        → HTTP gateway spec
+  └── gateway.md        → MCP gateway spec
 04-launchd.md        → Auto-start configuration
-05-verification.md   → Test everything works
+05-verification.md   → Test everything, get MCP config
 ```
 
 ## Troubleshooting
