@@ -9,7 +9,8 @@
   },
   "scripts": {
     "start": "bun run server/index.ts",
-    "dev": "bun --watch server/index.ts"
+    "dev": "bun --watch server/index.ts",
+    "permissions": "bun run server/trigger-permissions.ts"
   },
   "keywords": [
     "mcp",
