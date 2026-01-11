@@ -420,6 +420,21 @@ function describeOperation(opName: string): string {
   return lines.join("\n");
 }
 
+// Escape string for AppleScript double-quoted strings
+function escapeAppleScript(str: string): string {
+  return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+// Escape string for SQL LIKE patterns (prevents SQL injection)
+function escapeSQL(str: string): string {
+  return str.replace(/'/g, "''").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+// Escape string for shell to prevent command injection
+function escapeShell(str: string): string {
+  return str.replace(/\$/g, "\\$").replace(/`/g, "\\`").replace(/"/g, '\\"');
+}
+
 // Run AppleScript and return result
 async function runAppleScript(script: string): Promise<string> {
   try {
@@ -432,16 +447,35 @@ async function runAppleScript(script: string): Promise<string> {
   }
 }
 
-// SQLite query helper for Messages
+// SQLite query helper for Messages - escapes shell metacharacters
 async function queryMessagesDB(sql: string): Promise<string> {
   try {
+    const escapedSQL = escapeShell(sql);
     const { stdout } = await execAsync(
-      `sqlite3 ~/Library/Messages/chat.db "${sql.replace(/"/g, '\\"')}"`,
+      `sqlite3 ~/Library/Messages/chat.db "${escapedSQL}"`,
     );
     return stdout.trim();
   } catch (error: any) {
     throw new Error(`Messages database error: ${error.message}`);
   }
+}
+
+// Convert ISO date to AppleScript-compatible format
+function isoToAppleScriptDate(isoDate: string): string {
+  const date = new Date(isoDate);
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid date format: ${isoDate}`);
+  }
+  // AppleScript expects: "month day, year hour:minute:second AM/PM"
+  return date.toLocaleString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
 }
 
 // Operation handlers
@@ -455,11 +489,13 @@ async function executeOperation(
       if (!params.to) throw new Error("Missing required parameter: to");
       if (!params.message)
         throw new Error("Missing required parameter: message");
+      const escapedTo = escapeAppleScript(params.to);
+      const escapedMessage = escapeAppleScript(params.message);
       const script = `tell application "Messages"
         set targetService to 1st account whose service type = iMessage
-        set targetBuddy to participant "${params.to}" of targetService
-        send "${params.message.replace(/"/g, '\\"')}" to targetBuddy
-        return "Message sent to ${params.to}"
+        set targetBuddy to participant "${escapedTo}" of targetService
+        send "${escapedMessage}" to targetBuddy
+        return "Message sent to ${escapedTo}"
       end tell`;
       return await runAppleScript(script);
     }
@@ -467,22 +503,23 @@ async function executeOperation(
     case "messages_read": {
       if (!params.contact)
         throw new Error("Missing required parameter: contact");
-      const limit = params.limit || 20;
+      const limit = Math.min(Math.max(1, params.limit || 20), 100);
+      const escapedContact = escapeSQL(params.contact);
       const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
         CASE WHEN m.is_from_me THEN 'Me' ELSE h.id END as sender,
         m.text
         FROM message m
         LEFT JOIN handle h ON m.handle_id = h.ROWID
-        WHERE h.id LIKE '%${params.contact}%' AND m.text IS NOT NULL
+        WHERE h.id LIKE '%${escapedContact}%' ESCAPE '\\' AND m.text IS NOT NULL
         ORDER BY m.date DESC LIMIT ${limit}`;
       const result = await queryMessagesDB(sql);
       return result || `No messages found for ${params.contact}`;
     }
 
     case "messages_recent": {
-      const limit = params.limit || 20;
+      const limit = Math.min(Math.max(1, params.limit || 20), 100);
       const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
-        h.id as sender,
+        CASE WHEN m.is_from_me THEN 'Me' ELSE h.id END as sender,
         m.text
         FROM message m
         LEFT JOIN handle h ON m.handle_id = h.ROWID
@@ -494,20 +531,21 @@ async function executeOperation(
 
     case "messages_search": {
       if (!params.query) throw new Error("Missing required parameter: query");
-      const limit = params.limit || 20;
+      const limit = Math.min(Math.max(1, params.limit || 20), 100);
+      const escapedQuery = escapeSQL(params.query);
       const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
-        h.id as sender,
+        CASE WHEN m.is_from_me THEN 'Me' ELSE h.id END as sender,
         m.text
         FROM message m
         LEFT JOIN handle h ON m.handle_id = h.ROWID
-        WHERE m.text LIKE '%${params.query}%'
+        WHERE m.text LIKE '%${escapedQuery}%' ESCAPE '\\'
         ORDER BY m.date DESC LIMIT ${limit}`;
       const result = await queryMessagesDB(sql);
       return result || `No messages found matching "${params.query}"`;
     }
 
     case "messages_conversations": {
-      const limit = params.limit || 20;
+      const limit = Math.min(Math.max(1, params.limit || 20), 100);
       const sql = `SELECT
         c.display_name as name,
         h.id as participant,
@@ -525,8 +563,10 @@ async function executeOperation(
 
     // ============== NOTES ==============
     case "notes_list": {
-      const limit = params.limit || 20;
-      const folderFilter = params.folder ? `of folder "${params.folder}"` : "";
+      const limit = Math.min(Math.max(1, params.limit || 20), 100);
+      const folderFilter = params.folder
+        ? `of folder "${escapeAppleScript(params.folder)}"`
+        : "";
       const script = `tell application "Notes"
         set noteList to {}
         set allNotes to notes ${folderFilter}
@@ -545,10 +585,11 @@ async function executeOperation(
 
     case "notes_read": {
       if (!params.title) throw new Error("Missing required parameter: title");
+      const escapedTitle = escapeAppleScript(params.title);
       const script = `tell application "Notes"
-        set matchingNotes to (notes whose name contains "${params.title}")
+        set matchingNotes to (notes whose name contains "${escapedTitle}")
         if (count of matchingNotes) = 0 then
-          return "Note not found: ${params.title}"
+          return "Note not found: ${escapedTitle}"
         end if
         set theNote to item 1 of matchingNotes
         return plaintext of theNote
@@ -559,21 +600,24 @@ async function executeOperation(
     case "notes_create": {
       if (!params.title) throw new Error("Missing required parameter: title");
       if (!params.body) throw new Error("Missing required parameter: body");
-      const folder = params.folder || "Notes";
+      const escapedFolder = escapeAppleScript(params.folder || "Notes");
+      const escapedTitle = escapeAppleScript(params.title);
+      const escapedBody = escapeAppleScript(params.body);
       const script = `tell application "Notes"
-        tell folder "${folder}"
-          make new note with properties {name:"${params.title}", body:"${params.body.replace(/"/g, '\\"')}"}
+        tell folder "${escapedFolder}"
+          make new note with properties {name:"${escapedTitle}", body:"${escapedBody}"}
         end tell
-        return "Created note: ${params.title}"
+        return "Created note: ${escapedTitle}"
       end tell`;
       return await runAppleScript(script);
     }
 
     case "notes_search": {
       if (!params.query) throw new Error("Missing required parameter: query");
-      const limit = params.limit || 10;
+      const limit = Math.min(Math.max(1, params.limit || 10), 100);
+      const escapedQuery = escapeAppleScript(params.query);
       const script = `tell application "Notes"
-        set matchingNotes to (notes whose name contains "${params.query}" or plaintext contains "${params.query}")
+        set matchingNotes to (notes whose name contains "${escapedQuery}" or plaintext contains "${escapedQuery}")
         set noteList to {}
         set noteCount to count of matchingNotes
         if noteCount > ${limit} then set noteCount to ${limit}
@@ -590,61 +634,88 @@ async function executeOperation(
 
     // ============== REMINDERS ==============
     case "reminders_list": {
-      const listFilter = params.list ? `of list "${params.list}"` : "";
       const completedFilter = params.includeCompleted
         ? ""
         : "whose completed is false";
-      const script = `tell application "Reminders"
-        set reminderList to {}
-        repeat with l in lists
-          set rems to (reminders of l ${completedFilter})
+
+      let script: string;
+      if (params.list) {
+        // Filter to specific list
+        const escapedList = escapeAppleScript(params.list);
+        script = `tell application "Reminders"
+          set reminderList to {}
+          set targetList to list "${escapedList}"
+          set rems to (reminders of targetList ${completedFilter})
           repeat with r in rems
             set remName to name of r
-            set remList to name of l
             set remDue to ""
             try
               set remDue to " (due: " & (due date of r as string) & ")"
             end try
-            set end of reminderList to remList & ": " & remName & remDue
+            set end of reminderList to "${escapedList}: " & remName & remDue
           end repeat
-        end repeat
-        return reminderList as text
-      end tell`;
+          return reminderList as text
+        end tell`;
+      } else {
+        // All lists
+        script = `tell application "Reminders"
+          set reminderList to {}
+          repeat with l in lists
+            set rems to (reminders of l ${completedFilter})
+            repeat with r in rems
+              set remName to name of r
+              set remList to name of l
+              set remDue to ""
+              try
+                set remDue to " (due: " & (due date of r as string) & ")"
+              end try
+              set end of reminderList to remList & ": " & remName & remDue
+            end repeat
+          end repeat
+          return reminderList as text
+        end tell`;
+      }
       return await runAppleScript(script);
     }
 
     case "reminders_create": {
       if (!params.title) throw new Error("Missing required parameter: title");
-      const list = params.list || "Reminders";
-      let props = `{name:"${params.title}"`;
+      const escapedList = escapeAppleScript(params.list || "Reminders");
+      const escapedTitle = escapeAppleScript(params.title);
+      let props = `{name:"${escapedTitle}"`;
       if (params.notes) {
-        props += `, body:"${params.notes.replace(/"/g, '\\"')}"`;
+        props += `, body:"${escapeAppleScript(params.notes)}"`;
       }
       props += "}";
 
       let script = `tell application "Reminders"
-        tell list "${list}"
+        tell list "${escapedList}"
           set newReminder to make new reminder with properties ${props}`;
 
       if (params.dueDate) {
+        // Convert ISO date to AppleScript format
+        const asDate = isoToAppleScriptDate(params.dueDate);
         script += `
-          set due date of newReminder to date "${params.dueDate}"`;
+          set due date of newReminder to date "${asDate}"`;
       }
 
       script += `
         end tell
-        return "Created reminder: ${params.title}"
+        return "Created reminder: ${escapedTitle}"
       end tell`;
       return await runAppleScript(script);
     }
 
     case "reminders_complete": {
       if (!params.title) throw new Error("Missing required parameter: title");
-      const listFilter = params.list ? `of list "${params.list}"` : "";
+      const escapedTitle = escapeAppleScript(params.title);
+      const listFilter = params.list
+        ? `of list "${escapeAppleScript(params.list)}"`
+        : "";
       const script = `tell application "Reminders"
-        set matchingReminders to (reminders ${listFilter} whose name contains "${params.title}" and completed is false)
+        set matchingReminders to (reminders ${listFilter} whose name contains "${escapedTitle}" and completed is false)
         if (count of matchingReminders) = 0 then
-          return "No incomplete reminder found matching: ${params.title}"
+          return "No incomplete reminder found matching: ${escapedTitle}"
         end if
         set targetReminder to item 1 of matchingReminders
         set completed of targetReminder to true
@@ -656,8 +727,9 @@ async function executeOperation(
     // ============== CONTACTS ==============
     case "contacts_search": {
       if (!params.name) throw new Error("Missing required parameter: name");
+      const escapedName = escapeAppleScript(params.name);
       const script = `tell application "Contacts"
-        set matchingPeople to (every person whose name contains "${params.name}")
+        set matchingPeople to (every person whose name contains "${escapedName}")
         set results to {}
         repeat with p in matchingPeople
           set pName to name of p
@@ -681,10 +753,11 @@ async function executeOperation(
 
     case "contacts_get": {
       if (!params.name) throw new Error("Missing required parameter: name");
+      const escapedName = escapeAppleScript(params.name);
       const script = `tell application "Contacts"
-        set matchingPeople to (every person whose name contains "${params.name}")
+        set matchingPeople to (every person whose name contains "${escapedName}")
         if (count of matchingPeople) = 0 then
-          return "Contact not found: ${params.name}"
+          return "Contact not found: ${escapedName}"
         end if
         set p to item 1 of matchingPeople
         set contactInfo to "Name: " & (name of p)
