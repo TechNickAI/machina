@@ -2,6 +2,8 @@
 
 This folder contains knowledge for Claude to bootstrap machina on a Mac.
 
+**IMPORTANT:** Setup must be run from the Mac's Terminal app or via VNC. Do not run over SSH - macOS permission prompts require GUI access and will fail silently over SSH.
+
 ## Goal
 
 After setup completes:

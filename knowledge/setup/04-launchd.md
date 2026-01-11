@@ -12,12 +12,10 @@ Machina needs these services:
 - **com.machina.gateway** - HTTP gateway (Bun process)
 - **com.machina.whatsapp** - WhatsApp Go bridge (if enabled)
 
-apple-mcp doesn't need its own service - the gateway imports it directly.
-
 ## Gateway Service Configuration
 
 - Program: Bun running the gateway TypeScript
-- Working directory: `~/machina/components/gateway`
+- Working directory: `~/machina`
 - Environment: `MACHINA_TOKEN` set to the generated token
 - RunAtLoad: true (start on login)
 - KeepAlive: true (restart on crash)

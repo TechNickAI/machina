@@ -361,6 +361,24 @@ const operations: Operation[] = [
     example:
       "machina(action='raw_applescript', params={script: 'tell application \"Finder\" to get name of startup disk'})",
   },
+
+  // ============== SYSTEM ==============
+  {
+    name: "system_update",
+    description:
+      "Update Machina to latest version. Pulls latest code, updates dependencies, and reports changes. " +
+      "Note: Requires server restart to apply changes.",
+    parameters: [],
+    returns: "Update status with list of changes",
+    example: "machina(action='system_update')",
+  },
+  {
+    name: "system_status",
+    description: "Get current Machina version and system status",
+    parameters: [],
+    returns: "Version info, uptime, and health status",
+    example: "machina(action='system_status')",
+  },
 ];
 
 // Generate describe output
@@ -373,6 +391,7 @@ function describeAll(): string {
     Notes: operations.filter((o) => o.name.startsWith("notes_")),
     Reminders: operations.filter((o) => o.name.startsWith("reminders_")),
     Contacts: operations.filter((o) => o.name.startsWith("contacts_")),
+    System: operations.filter((o) => o.name.startsWith("system_")),
     Advanced: operations.filter((o) => o.name.startsWith("raw_")),
   };
 
@@ -799,6 +818,123 @@ async function executeOperation(
       return await runAppleScript(params.script);
     }
 
+    // ============== SYSTEM ==============
+    case "system_update": {
+      const results: string[] = [];
+
+      // Get current commit
+      const { stdout: beforeCommit } = await execAsync(
+        "git rev-parse --short HEAD",
+        { cwd: process.cwd() },
+      );
+      results.push(`Before: ${beforeCommit.trim()}`);
+
+      // Fetch and check for updates
+      await execAsync("git fetch", { cwd: process.cwd() });
+      const { stdout: behind } = await execAsync(
+        "git rev-list HEAD..origin/main --count",
+        { cwd: process.cwd() },
+      );
+
+      if (behind.trim() === "0") {
+        return "Already up to date. No changes available.";
+      }
+
+      // Pull latest
+      const { stdout: pullResult } = await execAsync("git pull", {
+        cwd: process.cwd(),
+      });
+      results.push(`Pull: ${pullResult.trim()}`);
+
+      // Update dependencies
+      const { stdout: installResult } = await execAsync("bun install", {
+        cwd: process.cwd(),
+      });
+      if (installResult.trim()) {
+        results.push(`Dependencies: ${installResult.trim()}`);
+      }
+
+      // Get new commit
+      const { stdout: afterCommit } = await execAsync(
+        "git rev-parse --short HEAD",
+        { cwd: process.cwd() },
+      );
+      results.push(`After: ${afterCommit.trim()}`);
+
+      // Get changelog
+      const { stdout: changelog } = await execAsync(
+        `git log ${beforeCommit.trim()}..${afterCommit.trim()} --oneline`,
+        { cwd: process.cwd() },
+      );
+      if (changelog.trim()) {
+        results.push(`\nChanges:\n${changelog.trim()}`);
+      }
+
+      // Auto-restart: close server, spawn new, exit
+      results.push("\nRestarting server...");
+      results.push("✅ Update complete. New server starting.");
+
+      // Close server after response is sent to avoid port conflict
+      setImmediate(() => {
+        // Force close all connections (SSE, long-polling, etc) to ensure clean shutdown
+        if (httpServer.closeAllConnections) {
+          httpServer.closeAllConnections();
+        }
+
+        httpServer.close(() => {
+          // Port is now released, spawn new server
+          const { spawn } = require("node:child_process");
+          const newServer = spawn("bun", ["run", "server/index.ts"], {
+            cwd: process.cwd(),
+            detached: true,
+            stdio: "inherit", // Show errors if spawn fails
+            env: { ...process.env },
+          });
+
+          // Only exit if spawn succeeds - if it fails, keep old server running
+          newServer.on("error", (err) => {
+            console.error("Failed to spawn new server:", err);
+            console.error("Keeping old server running");
+            // Don't exit - let LaunchD handle restart if needed
+          });
+
+          newServer.on("spawn", () => {
+            newServer.unref();
+            process.exit(0);
+          });
+        });
+      });
+
+      return results.join("\n");
+    }
+
+    case "system_status": {
+      const { stdout: commit } = await execAsync("git rev-parse --short HEAD", {
+        cwd: process.cwd(),
+      });
+      const { stdout: branch } = await execAsync(
+        "git rev-parse --abbrev-ref HEAD",
+        { cwd: process.cwd() },
+      );
+
+      // Check if behind remote
+      await execAsync("git fetch", { cwd: process.cwd() });
+      const { stdout: behind } = await execAsync(
+        "git rev-list HEAD..origin/main --count",
+        { cwd: process.cwd() },
+      );
+
+      const status = [
+        `Version: 1.0.0`,
+        `Commit: ${commit.trim()}`,
+        `Branch: ${branch.trim()}`,
+        `Updates available: ${behind.trim() === "0" ? "No" : `Yes (${behind.trim()} commits behind)`}`,
+        `Operations: ${operations.length}`,
+      ];
+
+      return status.join("\n");
+    }
+
     default:
       throw new Error(
         `Unknown operation: ${action}\n\nUse action='describe' to see available operations.`,
@@ -1003,7 +1139,7 @@ app.delete("/mcp", authenticate, async (req: Request, res: Response) => {
 });
 
 // Start server
-app.listen(PORT, "0.0.0.0", () => {
+const httpServer = app.listen(PORT, "0.0.0.0", () => {
   console.log(`Machina MCP gateway running on http://0.0.0.0:${PORT}`);
   console.log(`MCP endpoint: POST /mcp`);
   console.log(`Health check: GET /health`);

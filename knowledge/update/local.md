@@ -8,44 +8,25 @@ User opens Claude Code in ~/machina and says "Update machina"
 
 ## Process
 
-1. **Pull latest** - Fetch and pull latest from main. Report conflicts if any.
+1. Pull latest from main branch
+2. Update dependencies if package.json changed
+3. Restart the server process
+4. Verify health endpoint responds
+5. Report what changed
 
-```bash
-cd ~/machina && git fetch && git pull
+## Via MCP (Remote)
+
+AI agents can also trigger updates via the `system_update` operation:
+
+```
+machina(action='system_update')
 ```
 
-2. **Update dependencies** - Install any new dependencies.
-
-```bash
-bun install
-```
-
-3. **Restart server** - Stop existing process and restart.
-
-```bash
-pkill -f "bun.*server/index.ts"
-export MACHINA_TOKEN=$(cat ~/machina/config/.env | grep MACHINA_TOKEN | cut -d= -f2)
-nohup bun run server/index.ts >> ~/machina/logs/gateway.log 2>&1 &
-```
-
-4. **Verify** - Check health endpoint.
-
-```bash
-curl http://localhost:8080/health
-```
-
-5. **Report** - Tell user what was updated, current version, verification result.
+This pulls latest, updates deps, and reports changes. Requires server restart to apply.
 
 ## Rollback
 
-If update breaks something, revert to previous commit:
-
-```bash
-git log --oneline -5  # Find the commit to revert to
-git checkout <commit-hash>
-bun install
-# Restart server
-```
+If update breaks something, check git log for the previous working commit and reset to it.
 
 ## When to Update
 

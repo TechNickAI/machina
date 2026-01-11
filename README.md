@@ -40,13 +40,15 @@ Machina provides:
 
 ### Quick Start
 
+**Important:** Run this setup from the Mac's Terminal app or via VNC, not over SSH. macOS permission prompts require GUI access.
+
 ```bash
 # 1. Clone the repo
 git clone https://github.com/TechNickAI/machina ~/machina
 cd ~/machina
 
-# 2. Start Claude Code
-claude
+# 2. Start Claude Code (bypass mode required for automation)
+claude --permission-mode=bypassPermissions
 ```
 
 Then say: **"Set up machina"**
@@ -143,7 +145,7 @@ graph TB
 ## Updates
 
 ```bash
-cd ~/machina && claude
+cd ~/machina && claude --permission-mode=bypassPermissions
 ```
 
 Say: **"Update machina"**
