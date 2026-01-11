@@ -23,14 +23,12 @@ Test the describe action with the Bearer token. Should return list of available 
 
 ### Apple Services
 
-Run AppleScript to list items from each app:
+Test via the machina describe action, then try individual operations:
 
-- Messages: list chats
-- Contacts: list people
-- Calendar: list calendars
-- Mail: list accounts
-- Notes: list notes
-- Reminders: list reminder lists
+- Messages: `messages_conversations` or `messages_recent`
+- Contacts: `contacts_search` with a known name
+- Notes: `notes_list`
+- Reminders: `reminders_list`
 
 Success: returns data without "not authorized" errors.
 
