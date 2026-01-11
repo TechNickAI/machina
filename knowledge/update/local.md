@@ -62,12 +62,20 @@ Run verification checks from `../setup/05-verification.md`:
 curl http://localhost:8080/health
 ```
 
-### 6. Report Status
+### 6. Update Local Version
+
+After pulling latest, update VERSION file if it changed:
+
+```bash
+cat ~/machina/VERSION
+```
+
+### 7. Report Status
 
 Tell user:
 
 - What was updated (list changed files/commits)
-- Current version (from CHANGELOG.md)
+- Current version (from VERSION file)
 - Verification result
 
 ## Rollback

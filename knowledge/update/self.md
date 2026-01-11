@@ -61,8 +61,15 @@ launchctl load ~/Library/LaunchAgents/com.machina.selfupdate.plist
 
 ```bash
 cd ~/machina
+
+# Check via git
 git fetch origin
 git diff --quiet HEAD origin/main && echo "No updates" || echo "Updates available"
+
+# Or check via releases API
+LOCAL=$(cat ~/machina/VERSION)
+REMOTE=$(curl -s https://api.github.com/repos/TechNickAI/machina/releases/latest | jq -r '.tag_name | ltrimstr("v")')
+[ "$LOCAL" = "$REMOTE" ] && echo "Up to date: $LOCAL" || echo "Update available: $LOCAL -> $REMOTE"
 ```
 
 ## Monitoring

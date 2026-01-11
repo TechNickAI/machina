@@ -35,12 +35,32 @@ Claude will:
 
 ## Version Checking
 
-Current version: Check `~/machina/CHANGELOG.md`
-
-Check for updates:
+**Current version:**
 
 ```bash
-cd ~/machina && git fetch && git log HEAD..origin/main --oneline
+cat ~/machina/VERSION
 ```
 
-If output is empty, you're up to date.
+**Check for updates via GitHub Releases API:**
+
+```bash
+LOCAL=$(cat ~/machina/VERSION)
+REMOTE=$(curl -s https://api.github.com/repos/TechNickAI/machina/releases/latest | jq -r '.tag_name | ltrimstr("v")')
+
+if [ "$LOCAL" != "$REMOTE" ]; then
+  echo "Update available: $LOCAL -> $REMOTE"
+else
+  echo "Up to date: $LOCAL"
+fi
+```
+
+**View release notes for latest:**
+
+```bash
+gh release view --repo TechNickAI/machina
+```
+
+## Release History
+
+See [GitHub Releases](https://github.com/TechNickAI/machina/releases) for full
+changelog and release notes.
