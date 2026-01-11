@@ -26,7 +26,7 @@ Claude will pull latest, rebuild components, restart services, verify.
 
 Current version is in `package.json`.
 
-Check for updates via `npm view machina-mcp version` or GitHub Releases API.
+Check for updates via `git fetch && git log HEAD..origin/main --oneline` or GitHub Releases API.
 
 ## Release History
 

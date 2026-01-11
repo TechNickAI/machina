@@ -49,20 +49,27 @@ If you miss any:
 - System Preferences → Privacy & Security → Automation (for AppleScript)
 - System Preferences → Privacy & Security → Full Disk Access (for Messages)
 
-5. **Generate token**:
+5. **Generate token and create directories**:
 
 ```bash
-mkdir -p ~/machina/config
+mkdir -p ~/machina/config ~/machina/logs
 TOKEN=$(openssl rand -hex 32)
 echo "MACHINA_TOKEN=$TOKEN" > ~/machina/config/.env
 echo "Token: $TOKEN"
 ```
 
-6. **Start the server**:
+6. **Start the server** (foreground for testing):
 
 ```bash
 export MACHINA_TOKEN=$(cat ~/machina/config/.env | grep MACHINA_TOKEN | cut -d= -f2)
 bun run server/index.ts
+```
+
+Or **background with logging**:
+
+```bash
+export MACHINA_TOKEN=$(cat ~/machina/config/.env | grep MACHINA_TOKEN | cut -d= -f2)
+nohup bun run server/index.ts >> ~/machina/logs/gateway.log 2>&1 &
 ```
 
 7. **Verify**: `curl http://localhost:8080/health` should return `{"status":"ok","version":"1.0.0"}`

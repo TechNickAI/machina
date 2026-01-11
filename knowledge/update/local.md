@@ -8,27 +8,44 @@ User opens Claude Code in ~/machina and says "Update machina"
 
 ## Process
 
-1. **Pull knowledge repo** - Fetch and pull latest from main. Report conflicts if any.
+1. **Pull latest** - Fetch and pull latest from main. Report conflicts if any.
 
-2. **Update machina-mcp** - Run `bun update -g machina-mcp` to get latest version.
+```bash
+cd ~/machina && git fetch && git pull
+```
 
-3. **Update apple-mcp** - Run `bun update -g apple-mcp` if installed globally.
+2. **Update dependencies** - Install any new dependencies.
 
-4. **Restart services** - Stop and start the LaunchD services.
+```bash
+bun install
+```
 
-5. **Verify** - Run health checks, confirm services are working.
+3. **Restart server** - Stop existing process and restart.
 
-6. **Report** - Tell user what was updated, current version, verification result.
+```bash
+pkill -f "bun.*server/index.ts"
+export MACHINA_TOKEN=$(cat ~/machina/config/.env | grep MACHINA_TOKEN | cut -d= -f2)
+nohup bun run server/index.ts >> ~/machina/logs/gateway.log 2>&1 &
+```
+
+4. **Verify** - Check health endpoint.
+
+```bash
+curl http://localhost:8080/health
+```
+
+5. **Report** - Tell user what was updated, current version, verification result.
 
 ## Rollback
 
-If update breaks something, install previous version:
+If update breaks something, revert to previous commit:
 
 ```bash
-bun add -g machina-mcp@0.1.0
+git log --oneline -5  # Find the commit to revert to
+git checkout <commit-hash>
+bun install
+# Restart server
 ```
-
-Then restart services.
 
 ## When to Update
 

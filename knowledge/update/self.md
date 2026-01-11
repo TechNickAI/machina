@@ -26,8 +26,14 @@ Create a LaunchD plist `com.machina.selfupdate` that:
 
 ## Version Checking
 
-Can also check via `npm view machina-mcp version` - compare installed version to latest.
-This catches releases even if git history differs.
+Check local vs remote via git:
+
+```bash
+git fetch
+git log HEAD..origin/main --oneline
+```
+
+If output is empty, you're current. Otherwise shows commits you're behind.
 
 ## Alternative: Pull Only
 

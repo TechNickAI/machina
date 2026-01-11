@@ -26,9 +26,11 @@ After setup completes:
 
 **Capabilities:**
 
-- iMessage (requires apple-mcp)
-- WhatsApp (requires whatsapp-mcp + Go)
-- Mail, Calendar, Notes, Reminders (all via apple-mcp)
+- iMessage (direct SQLite + AppleScript)
+- Notes (AppleScript)
+- Reminders (AppleScript)
+- Contacts (AppleScript)
+- WhatsApp (requires whatsapp-mcp bridge, planned)
 
 **Remote access:**
 
@@ -55,9 +57,8 @@ After setup completes:
 02-core-install.md   → Clone repos, create directories
 03-tailscale.md      → Remote access via Tailscale
 components/
-  ├── apple-services.md → apple-mcp setup (deprecated, gateway handles directly)
-  ├── whatsapp.md       → whatsapp-mcp setup
-  └── gateway.md        → MCP gateway spec
+  ├── gateway.md        → MCP gateway implementation
+  └── whatsapp.md       → whatsapp-mcp bridge (planned)
 04-launchd.md        → Auto-start configuration
 05-verification.md   → Test everything, get MCP config
 ```

@@ -2,7 +2,7 @@
 
 **AI's home on your Mac.**
 
-Give AI agents remote access to iMessage, WhatsApp, Mail, Calendar, Notes, Reminders, and more. Installed and maintained by Claude Code - not bash scripts.
+Give AI agents remote access to iMessage, Notes, Reminders, Contacts, and more. Installed and maintained by Claude Code - not bash scripts.
 
 ```
 Cloud AI ──MCP over HTTP──▶ Machina ──▶ Your Mac's capabilities
@@ -59,7 +59,7 @@ Claude will:
 4. 🔑 Generate authentication token
 5. 🚀 Start the MCP gateway
 6. 🌐 Configure Tailscale HTTPS access
-7. 🧪 Test with actual iMessage/Calendar queries
+7. 🧪 Test with actual iMessage/Notes queries
 8. 📋 Give you an MCP config to copy/paste
 
 **That's it.** 5-10 minutes. No bash scripts. No debugging. Claude adapts to your system.
