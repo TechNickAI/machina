@@ -162,9 +162,11 @@ async function handleReminders(operation: string, params: any) {
 }
 
 // Start server
-console.log(`Machina gateway starting on port ${PORT}...`);
+// Bind to 0.0.0.0 for Tailscale remote access (not just localhost)
+console.log(`Machina gateway starting on 0.0.0.0:${PORT}...`);
 export default {
   port: PORT,
+  hostname: "0.0.0.0",
   fetch: app.fetch,
 };
 ```

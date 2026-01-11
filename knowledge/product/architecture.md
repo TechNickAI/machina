@@ -87,7 +87,7 @@ POST /api/machina
 
 **Purpose**: Access to native Apple apps via AppleScript.
 
-**Source**: https://github.com/supermemoryai/apple-mcp (archived but complete)
+**Source**: https://github.com/TechNickAI/apple-mcp (forked from supermemoryai)
 
 **Location**: `~/machina/components/apple-mcp/`
 

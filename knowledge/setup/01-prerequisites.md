@@ -45,6 +45,30 @@ brew install oven-sh/bun/bun
 brew install go
 ```
 
+### Python 3 (for whatsapp-mcp)
+
+**Only required if user wants WhatsApp support.**
+
+**Verification**: `python3 --version` returns 3.9 or higher
+
+Usually pre-installed on macOS. If not:
+
+```bash
+brew install python
+```
+
+### ffmpeg (for WhatsApp media)
+
+**Only required if user wants WhatsApp media support (images, videos, voice).**
+
+**Verification**: `ffmpeg -version` returns a version
+
+**If not installed**:
+
+```bash
+brew install ffmpeg
+```
+
 ### Git
 
 **Verification**: `git --version` returns a version
@@ -129,6 +153,8 @@ Before proceeding to installation:
 - [ ] `bun --version` works
 - [ ] `git --version` works
 - [ ] `go version` works (if WhatsApp wanted)
+- [ ] `python3 --version` works (if WhatsApp wanted)
+- [ ] `ffmpeg -version` works (if WhatsApp media wanted)
 - [ ] `~/machina/` directory exists
 - [ ] User is signed into iCloud (for iMessage)
 - [ ] Tailscale connected (if remote access wanted)

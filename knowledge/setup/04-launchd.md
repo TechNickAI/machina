@@ -75,6 +75,8 @@ Create `~/Library/LaunchAgents/com.machina.whatsapp.plist`:
     <key>ProgramArguments</key>
     <array>
         <string>/Users/USER/machina/components/whatsapp-mcp/whatsapp-bridge/whatsapp-bridge</string>
+        <string>--port</string>
+        <string>3001</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -222,8 +224,12 @@ launchctl load ~/Library/LaunchAgents/com.machina.gateway.plist
 
 ```bash
 which bun
-# Usually: /Users/USER/.bun/bin/bun
-# Or: /opt/homebrew/bin/bun
 ```
 
-Use the full path in the plist.
+Common locations:
+
+- Homebrew install: `/opt/homebrew/bin/bun`
+- Direct install: `/Users/USER/.bun/bin/bun`
+
+**Claude should run `which bun` and use the actual path returned.** The plist template
+uses a placeholder - always replace with the real path from `which bun`.

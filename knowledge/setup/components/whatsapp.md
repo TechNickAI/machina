@@ -15,10 +15,12 @@ Two-layer bridge:
 2. **Python MCP**: Query interface, calls Go bridge HTTP API
 
 ```
-Gateway → Python MCP → HTTP (localhost:8080) → Go Bridge → WhatsApp Web
+Gateway → Python MCP → HTTP (localhost:3001) → Go Bridge → WhatsApp Web
                               ↓
                         SQLite (messages.db)
 ```
+
+**Note**: WhatsApp bridge runs on port 3001 to avoid collision with gateway (port 8080).
 
 ## Installation
 
@@ -52,7 +54,7 @@ WhatsApp requires QR code authentication:
 
    ```bash
    cd ~/machina/components/whatsapp-mcp/whatsapp-bridge
-   ./whatsapp-bridge
+   ./whatsapp-bridge --port 3001
    ```
 
 2. QR code appears in terminal
@@ -113,7 +115,7 @@ Must run continuously. Use LaunchD (see `../04-launchd.md`).
 
 ```bash
 cd ~/machina/components/whatsapp-mcp/whatsapp-bridge
-./whatsapp-bridge
+./whatsapp-bridge --port 3001
 ```
 
 ### Python MCP (Optional)
@@ -122,16 +124,15 @@ Only needed if using MCP protocol directly. Gateway can call Python functions di
 
 ## Integration with Gateway
 
-Gateway calls WhatsApp via HTTP to the Go bridge, or imports Python functions:
+Gateway calls WhatsApp via HTTP to the Go bridge:
 
 ```typescript
-// Option 1: HTTP to Go bridge
-const response = await fetch("http://localhost:8080/api/send", {
+// HTTP to Go bridge on port 3001
+const response = await fetch("http://localhost:3001/api/send", {
   method: "POST",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ to: "+1234567890", message: "Hello" }),
 });
-
-// Option 2: Python subprocess (if Python MCP preferred)
 ```
 
 ## Troubleshooting

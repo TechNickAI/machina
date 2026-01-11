@@ -7,14 +7,14 @@ After prerequisites are verified, install the core components.
 ### apple-mcp (Required for Apple Services)
 
 ```bash
-git clone https://github.com/supermemoryai/apple-mcp ~/machina/components/apple-mcp
+git clone https://github.com/TechNickAI/apple-mcp ~/machina/components/apple-mcp
 cd ~/machina/components/apple-mcp
 bun install
 ```
 
 **Verification**: `cd ~/machina/components/apple-mcp && bun run build` succeeds
 
-**Note**: This repo is archived (read-only) but the code is complete and stable.
+**Note**: This is our fork of supermemoryai/apple-mcp (which is archived). The code is complete and stable.
 
 ### whatsapp-mcp (Optional - for WhatsApp)
 

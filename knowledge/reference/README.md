@@ -8,7 +8,7 @@ These repos are cloned to `/Users/nick/src/reference/` (not part of machina repo
 
 | Repo                             | Purpose                  | Our Use            |
 | -------------------------------- | ------------------------ | ------------------ |
-| supermemoryai/apple-mcp          | Apple native apps        | Fork as core       |
+| TechNickAI/apple-mcp             | Apple native apps        | Forked as core     |
 | lharries/whatsapp-mcp            | WhatsApp messaging       | Use directly       |
 | steipete/macos-automator-mcp     | 500+ AppleScript recipes | Reference          |
 | wonderwhy-er/DesktopCommanderMCP | Terminal/filesystem      | Future integration |

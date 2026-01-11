@@ -5,7 +5,7 @@ Reminders, Contacts, and Maps.
 
 ## Source
 
-Repository: https://github.com/supermemoryai/apple-mcp
+Repository: https://github.com/TechNickAI/apple-mcp (forked from supermemoryai)
 Location: `~/machina/components/apple-mcp`
 Status: Archived (stable, complete)
 

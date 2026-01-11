@@ -69,7 +69,7 @@ Traditional installers follow deterministic steps and break on edge cases. Machi
 
 | Capability | Source                                                   | Status |
 | ---------- | -------------------------------------------------------- | ------ |
-| iMessage   | [apple-mcp](https://github.com/supermemoryai/apple-mcp)  | Ready  |
+| iMessage   | [apple-mcp](https://github.com/TechNickAI/apple-mcp)     | Ready  |
 | Mail       | apple-mcp                                                | Ready  |
 | Calendar   | apple-mcp                                                | Ready  |
 | Notes      | apple-mcp                                                | Ready  |
