@@ -105,7 +105,7 @@ All operations use the **progressive disclosure** pattern - one `machina` tool, 
 graph TB
     AI[Cloud AI Agent<br/>Claude, Carmenta, etc.]
     TS[Tailscale Network<br/>Encrypted tunnel]
-    GW[Machina Gateway<br/>:8080]
+    GW[Machina Gateway<br/>:9900]
 
     subgraph "Your Mac"
         GW
@@ -121,7 +121,7 @@ graph TB
     end
 
     AI -->|MCP over HTTPS<br/>Bearer token| TS
-    TS -->|Port 8080| GW
+    TS -->|Port 9900| GW
     GW -->|Direct SQLite| DB
     GW -->|AppleScript| AS
     AS --> MSG
