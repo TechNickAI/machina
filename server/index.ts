@@ -16,6 +16,7 @@
 import express, { Request, Response, NextFunction } from "express";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+import Database from "better-sqlite3";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -590,11 +591,6 @@ function escapeSQL(str: string): string {
   return str.replace(/'/g, "''").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
-// Escape string for shell to prevent command injection
-function escapeShell(str: string): string {
-  return str.replace(/\$/g, "\\$").replace(/`/g, "\\`").replace(/"/g, '\\"');
-}
-
 // Ensure an app is running before AppleScript can talk to it
 async function ensureAppRunning(appName: string): Promise<void> {
   try {
@@ -626,14 +622,15 @@ async function runAppleScript(
   }
 }
 
-// SQLite query helper for Messages - escapes shell metacharacters
+// SQLite query helper for Messages
 async function queryMessagesDB(sql: string): Promise<string> {
   try {
-    const escapedSQL = escapeShell(sql);
-    const { stdout } = await execAsync(
-      `sqlite3 ~/Library/Messages/chat.db "${escapedSQL}"`,
-    );
-    return stdout.trim();
+    const dbPath = `${process.env.HOME}/Library/Messages/chat.db`;
+    const db = new Database(dbPath, { readonly: true });
+    const rows = db.prepare(sql).all();
+    db.close();
+    // Return formatted output similar to sqlite3 CLI
+    return rows.map((row) => Object.values(row).join("|")).join("\n");
   } catch (error: any) {
     throw new Error(`Messages database error: ${error.message}`);
   }
@@ -646,12 +643,11 @@ const WHATSAPP_API_URL = "http://localhost:9901";
 // SQLite query helper for WhatsApp
 async function queryWhatsAppDB(sql: string): Promise<any[]> {
   try {
-    const escapedSQL = escapeShell(sql);
-    const { stdout } = await execAsync(
-      `sqlite3 -json "${WHATSAPP_DB_PATH}" "${escapedSQL}"`,
-    );
-    if (!stdout.trim()) return [];
-    return JSON.parse(stdout);
+    // Open database in read-only mode for security
+    const db = new Database(WHATSAPP_DB_PATH, { readonly: true });
+    const rows = db.prepare(sql).all();
+    db.close();
+    return rows;
   } catch (error: any) {
     throw new Error(`WhatsApp database error: ${error.message}`);
   }
@@ -1350,6 +1346,7 @@ async function executeOperation(
         "detach",
         "pragma",
         "load_extension",
+        "replace", // SQLite REPLACE is INSERT OR REPLACE (can modify data)
       ];
       for (const keyword of dangerous) {
         const regex = new RegExp(`\\b${keyword}\\b`, "i");
@@ -1363,6 +1360,11 @@ async function executeOperation(
       // Block SQL comments which could hide malicious code
       if (normalizedSql.includes("--") || normalizedSql.includes("/*")) {
         throw new Error("SQL comments are not allowed in raw queries.");
+      }
+
+      // Block semicolons to prevent statement chaining
+      if (params.sql.includes(";")) {
+        throw new Error("Semicolons are not allowed (no statement chaining).");
       }
 
       const rows = await queryWhatsAppDB(params.sql);
