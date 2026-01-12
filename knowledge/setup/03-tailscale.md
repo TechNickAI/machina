@@ -12,7 +12,7 @@ Enable secure remote access to Machina via Tailscale.
 Tailscale Serve provides HTTPS termination for your MCP server.
 
 ```bash
-tailscale serve --bg http://localhost:9900
+tailscale serve https:443 / http://127.0.0.1:9900
 ```
 
 If you see "Serve is not enabled on your tailnet", visit the provided URL to enable it
@@ -48,7 +48,7 @@ Should return `{"status":"ok","version":"..."}` with current version.
 If you need access from outside your Tailscale network, enable Funnel:
 
 ```bash
-tailscale funnel --bg 443
+tailscale funnel https:443 / http://127.0.0.1:9900
 ```
 
 This exposes your MCP server publicly. The bearer token provides authentication.

@@ -9,24 +9,25 @@ User LaunchAgents go in `~/Library/LaunchAgents/`.
 
 Machina needs these services:
 
-- **com.machina.gateway** - HTTP gateway (Bun process)
-- **com.machina.whatsapp** - WhatsApp Go bridge (if enabled)
+- **com.machina.gateway** - MCP gateway (Node.js + tsx)
+- **com.machina.whatsapp** - WhatsApp service (optional, Node.js)
 
 ## Gateway Service Configuration
 
-- Program: Bun running the gateway TypeScript
+- Program: Node.js with tsx running the gateway TypeScript
 - Working directory: `~/machina`
 - Environment: `MACHINA_TOKEN` set to the generated token
 - RunAtLoad: true (start on login)
 - KeepAlive: true (restart on crash)
 - Logs: stdout and stderr to `~/machina/logs/`
 
-Note: Use the actual Bun path from `which bun` (varies by install method).
+Note: Use the actual node/tsx paths from `which node` and the project's node_modules.
 
 ## WhatsApp Service Configuration
 
-- Program: The compiled Go binary with `--port 3001`
-- Working directory: `~/machina/components/whatsapp-mcp/whatsapp-bridge`
+- Program: Node.js running the WhatsApp service TypeScript
+- Working directory: `~/machina/components/whatsapp-mcp-ts`
+- Environment: `WHATSAPP_PORT=9901`, `WHATSAPP_MCP_DATA_DIR` set
 - RunAtLoad: true
 - KeepAlive: true
 - Logs: to `~/machina/logs/`

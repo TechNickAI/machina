@@ -14,14 +14,12 @@ Before installing machina, verify these requirements are met.
 ### Always Required
 
 - **Homebrew** - Package manager
-- **Bun** - JavaScript runtime (for apple-mcp and gateway)
+- **Node.js 22+** - JavaScript runtime (for gateway)
 - **Git** - Version control
 
 ### For WhatsApp Support
 
-- **Go** - For building the WhatsApp bridge
-- **Python 3** - For WhatsApp MCP layer
-- **ffmpeg** - For WhatsApp media (images, video, voice)
+- No additional software required (uses Baileys library in TypeScript)
 
 ## macOS Permissions
 

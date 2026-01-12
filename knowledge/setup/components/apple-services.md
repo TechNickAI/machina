@@ -1,45 +1,39 @@
-# Apple Services (apple-mcp)
+# Apple Services
 
-Access to native Apple apps via AppleScript.
-
-## Source
-
-Repository: `TechNickAI/apple-mcp` (forked from supermemoryai)
-Location: `~/machina/components/apple-mcp`
+Access to native Apple apps via AppleScript, built directly into the gateway.
 
 ## Capabilities
 
-- **Messages**: Send, read, schedule iMessage
-- **Mail**: Send, search, read emails
-- **Calendar**: Create, search, list events
-- **Notes**: Create, search, list notes
-- **Reminders**: Create, list, search reminders
-- **Contacts**: Search, lookup contacts
+- **Messages**: Send, read, search iMessages (SQLite + AppleScript)
+- **Notes**: Create, search, list notes (AppleScript)
+- **Reminders**: Create, list, complete reminders (AppleScript)
+- **Contacts**: Search, lookup contacts (AppleScript)
 
-## Installation
+## Implementation
 
-Clone the repo. Install dependencies with Bun. Verify build succeeds.
+The gateway executes AppleScript directly via `osascript` subprocess. Messages are read
+from SQLite (`~/Library/Messages/chat.db`) for better performance.
 
-No configuration needed - works out of the box.
+No external dependencies or separate services required.
 
 ## Permissions Required
 
 1. **Automation**: Terminal must be allowed to control each app. First AppleScript call
    triggers a permission prompt.
 
-2. **Full Disk Access** (recommended): Enables direct SQLite access for faster queries.
-   Required for reading `~/Library/Messages/chat.db`.
+2. **Full Disk Access**: Required for reading `~/Library/Messages/chat.db`.
+   Configure in System Preferences → Privacy & Security → Full Disk Access.
 
 ## Testing
 
-Test each capability by running AppleScript to list items from each app (chats, contacts,
-calendars, mail accounts, notes, reminder lists).
+Run the `npm run permissions` script to trigger all permission prompts at once.
 
-Success: lists return without "not authorized" errors.
+Verify by calling operations via MCP:
 
-## Integration
-
-The gateway imports apple-mcp utilities directly. See `gateway.md`.
+- `contacts_search` - should list matching contacts
+- `messages_recent` - should show recent iMessages
+- `notes_list` - should list notes
+- `reminders_list` - should list reminders
 
 ## Troubleshooting
 
@@ -55,3 +49,7 @@ Some operations are slow on first run. Open the target app manually first.
 ### Messages not sending
 
 Verify iMessage is enabled and you're signed into iCloud.
+
+### "Operation not permitted" for chat.db
+
+Full Disk Access not granted, or Terminal needs restart after granting.

@@ -51,7 +51,7 @@ assesses the system, adapts to edge cases, and achieves the desired state.
 **Why this works:**
 
 - Claude can assess: "Is Homebrew installed? What macOS version? Permissions granted?"
-- Claude can adapt: "Bun not found, let me install it first"
+- Claude can adapt: "Node.js not found, let me install it first"
 - Claude can debug: "AppleScript permission error - let me check System Preferences"
 - Claude can verify: "Sending test message to confirm iMessage works"
 - Claude can ask: "Do you want WhatsApp? This requires QR authentication."
@@ -78,10 +78,9 @@ It maintains itself, heals itself, updates itself.
 
 ## What Machina Is Not
 
-- **Not an MCP server itself**: Machina orchestrates existing MCP servers
-- **Not code-heavy**: The knowledge folder is the product, not source code
 - **Not platform-agnostic**: Mac-specific (Linux/Windows would be separate projects)
-- **Not a replacement for existing tools**: Builds on apple-mcp, whatsapp-mcp, etc.
+- **Not complex**: Single gateway process with optional WhatsApp service
+- **Not dependent on external components**: Built-in AppleScript, direct SQLite access
 
 ## Target Users
 
@@ -128,24 +127,20 @@ Cloud AI (Carmenta)
          │ HTTPS + Token
          ▼
     ┌─────────────────────────────────────────┐
-    │              Machina                    │
+    │         Machina Gateway (:9900)         │
+    │           Express + MCP SDK             │
     │                                         │
-    │   HTTP Gateway (Hono)                   │
-    │         │                               │
-    │   Progressive Disclosure Router         │
-    │         │                               │
-    │   ┌─────┴─────┬───────────┐            │
-    │   ▼           ▼           ▼            │
-    │ apple-mcp  whatsapp    (future)        │
-    │ (Messages,  bridge     Desktop         │
-    │  Mail,                 Commander)      │
-    │  Calendar)                             │
-    │                                         │
-    │   AppleScript ←→ Native macOS          │
+    │   ┌─────┬─────┬─────┬─────┐            │
+    │   ▼     ▼     ▼     ▼     ▼            │
+    │ SQLite  AS    AS    AS   HTTP          │
+    │ chat.db Notes Rem  Cont  :9901         │
+    │                          │             │
+    │                    WhatsApp Service    │
+    │                    (optional)          │
     └─────────────────────────────────────────┘
 ```
 
-Components are cloned to `~/machina/components/` and run as services via LaunchD.
+Single gateway process with built-in AppleScript. Optional WhatsApp service.
 
 ## Versioning
 

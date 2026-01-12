@@ -7,13 +7,13 @@ bearer token authentication.
 
 ```bash
 # Install dependencies
-bun install
+npm install
 
 # Set token
 export MACHINA_TOKEN=<your-token>
 
 # Run
-bun run server/index.ts
+npm start
 ```
 
 ## Configuration
@@ -22,11 +22,12 @@ Environment variables:
 
 - `MACHINA_TOKEN` - Required. Bearer token for authentication.
 - `MACHINA_PORT` - Optional. Port to listen on (default: 9900).
+- `WHATSAPP_PORT` - Optional. Port for WhatsApp service (default: 9901).
 
 ## Architecture
 
-The gateway directly executes AppleScript for Apple services (no dependency on apple-mcp).
-Messages are read via SQLite for better reliability.
+The gateway directly executes AppleScript for Apple services (no external dependencies).
+Messages and WhatsApp are read via SQLite for better reliability.
 
 ```
 AI Agent (Carmenta)
@@ -34,35 +35,75 @@ AI Agent (Carmenta)
     ↓ Bearer token auth
 Machina Gateway (port 9900)
     ↓ executes
-AppleScript → Contacts, Mail, Calendar, Notes, Reminders
-SQLite → Messages (chat.db)
+AppleScript → Contacts, Notes, Reminders
+SQLite → Messages (chat.db), WhatsApp (whatsapp.db)
+HTTP → WhatsApp service (for sending)
 ```
 
 ## Endpoints
 
 - `POST /mcp` - MCP messages (requires auth)
-- `GET /mcp` - SSE notifications (requires auth)
-- `DELETE /mcp` - Session termination (requires auth)
 - `GET /health` - Health check (no auth)
 
-## Available Tools
+## Available Operations
 
-- **contacts_search** - Search contacts by name
-- **messages_unread** - Get recent iMessages
-- **messages_send** - Send iMessage
-- **messages_read** - Read messages from specific contact
-- **calendar_list** - List upcoming calendar events
-- **notes_list** - List recent notes
-- **reminders_list** - List reminders
+Uses progressive disclosure pattern - single `machina` tool, operations listed via
+`action='describe'`.
+
+**Messages (5)**:
+
+- `messages_send` - Send iMessage
+- `messages_read` - Read messages from contact
+- `messages_recent` - Get recent messages
+- `messages_search` - Search message content
+- `messages_conversations` - List conversations
+
+**Notes (5)**:
+
+- `notes_list` - List notes
+- `notes_read` - Read note content
+- `notes_create` - Create new note
+- `notes_search` - Search notes
+
+**Reminders (3)**:
+
+- `reminders_list` - List reminders
+- `reminders_create` - Create reminder
+- `reminders_complete` - Mark complete
+
+**Contacts (2)**:
+
+- `contacts_search` - Search contacts
+- `contacts_get` - Get contact details
+
+**WhatsApp (7)**:
+
+- `whatsapp_status` - Check connection
+- `whatsapp_chats` - List conversations
+- `whatsapp_messages` - Read chat messages
+- `whatsapp_search` - Search messages
+- `whatsapp_contacts` - Find contacts
+- `whatsapp_send` - Send messages
+- `whatsapp_raw_sql` - Custom read queries
+
+**System (2)**:
+
+- `system_status` - Gateway status
+- `system_update` - Pull updates and restart
+
+**Advanced (1)**:
+
+- `raw_applescript` - Execute custom AppleScript
 
 ## Connecting from External AI
 
 To connect from Carmenta or another AI agent:
 
 1. **Tailscale**: Ensure both machines are on the same Tailscale network
-2. **URL**: `http://<tailscale-hostname>:9900/mcp`
-3. **Auth**: `Authorization: Bearer <MACHINA_TOKEN>`
-4. **Headers**: `Accept: application/json, text/event-stream`
+2. **Tailscale serve**: Run `tailscale serve https:443 / http://127.0.0.1:9900` on the Mac
+3. **URL**: `https://<tailscale-hostname>/mcp`
+4. **Auth**: `Authorization: Bearer <MACHINA_TOKEN>`
+5. **Headers**: `Accept: application/json, text/event-stream`
 
 ### MCP Protocol Flow
 
@@ -73,22 +114,20 @@ POST /mcp
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"carmenta","version":"1.0"}}}
 ```
 
-2. Capture session ID from response header: `mcp-session-id`
-
-3. Call tools with session ID:
+2. Call tools (stateless - no session required):
 
 ```json
 POST /mcp
-mcp-session-id: <session-id>
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"messages_unread","arguments":{"limit":5}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"machina","arguments":{"action":"describe"}}}
 ```
 
 ## Security
 
 - Bearer token via `Authorization: Bearer <token>` header
-- Session isolation via `Mcp-Session-Id` header
 - Bind to `0.0.0.0` for Tailscale remote access
 - Tailscale provides encrypted network layer
+- Read-only SQLite access for message databases
+- SQL injection prevention with LIKE escaping
 
 ## Permissions Required
 
@@ -99,8 +138,9 @@ On first tool call, macOS will prompt for permissions:
 
 Grant all permissions when prompted. See `01-prerequisites.md` for details.
 
-## Adding New Tools
+## Adding New Operations
 
-1. Add tool definition to `tools` array
-2. Add case in `handleTool` switch
-3. Implement via AppleScript or direct system access
+1. Add operation to `operations` object in `handleMachina`
+2. Add Zod schema for parameters
+3. Implement handler function
+4. Add to `describe` output

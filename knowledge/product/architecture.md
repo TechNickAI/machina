@@ -2,43 +2,37 @@
 
 ## System Overview
 
-Machina runs on a Mac (Mini, Studio, or laptop) and exposes Mac capabilities to AI
-agents via HTTPS. It orchestrates multiple component repos, each providing different
-capabilities.
+Machina runs on a Mac and exposes Mac capabilities to AI agents via MCP over HTTPS.
+It's a single Node.js process with optional WhatsApp service.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         Your Mac                                    │
 │                                                                     │
-│  ~/machina/                    ~/machina/components/                │
-│  ├── knowledge/ (this repo)    ├── apple-mcp/                      │
-│  ├── config/                   ├── whatsapp-mcp/                   │
-│  └── logs/                     └── gateway/                        │
+│  ~/machina/                                                         │
+│  ├── server/         # MCP Gateway (Express + MCP SDK)              │
+│  ├── services/       # WhatsApp HTTP wrapper                        │
+│  ├── knowledge/      # This documentation                           │
+│  └── config/         # Token and environment                        │
 │                                                                     │
 │  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                    HTTP Gateway (port 9900)                  │   │
-│  │              Hono server with token auth                     │   │
+│  │                Machina Gateway (port 9900)                   │   │
+│  │              Express + MCP SDK + Bearer auth                 │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │                              │                                      │
 │         ┌────────────────────┼────────────────────┐                │
 │         │                    │                    │                │
 │         ▼                    ▼                    ▼                │
 │  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐          │
-│  │  apple-mcp  │     │  whatsapp   │     │  (future)   │          │
-│  │  TypeScript │     │  Go bridge  │     │  desktop    │          │
-│  │  + Bun      │     │  + Python   │     │  commander  │          │
+│  │ AppleScript │     │   SQLite    │     │  WhatsApp   │          │
+│  │ (osascript) │     │  chat.db    │     │   :9901     │          │
+│  │             │     │             │     │  (optional) │          │
 │  └─────────────┘     └─────────────┘     └─────────────┘          │
-│         │                    │                                      │
-│         ▼                    ▼                                      │
-│  ┌─────────────┐     ┌─────────────┐                               │
-│  │ AppleScript │     │ WhatsApp    │                               │
-│  │ (osascript) │     │ Web API     │                               │
-│  └─────────────┘     └─────────────┘                               │
-│         │                    │                                      │
-│         ▼                    ▼                                      │
+│         │                    │                    │                │
+│         ▼                    ▼                    ▼                │
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │              Native macOS / External Services                │   │
-│  │    Messages.app   Mail.app   Calendar.app   WhatsApp Web    │   │
+│  │    Notes   Reminders   Contacts   Messages   WhatsApp Web   │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
@@ -53,83 +47,50 @@ capabilities.
 
 ## Component Details
 
-### HTTP Gateway
+### MCP Gateway (server/index.ts)
 
-**Purpose**: Single entry point for all Mac capabilities with authentication.
+**Purpose**: Single entry point for all Mac capabilities with MCP protocol support.
 
-**Technology**: Hono (TypeScript HTTP framework, works with Bun)
+**Technology**: Express 5 + @modelcontextprotocol/sdk + better-sqlite3 + tsx
 
-**Location**: `~/machina/components/gateway/`
+**Location**: `~/machina/server/index.ts`
 
 **Key features**:
 
-- Token authentication (Authorization: Bearer header)
-- Progressive disclosure (describe action lists available operations)
-- Routes requests to appropriate backend service
-- Health check endpoint for monitoring
+- Bearer token authentication (Authorization header)
+- Progressive disclosure (single `machina` tool, operations via describe)
+- Direct AppleScript execution (no external dependencies)
+- Direct SQLite for Messages (faster than AppleScript)
+- Stateless MCP over HTTP with JSON responses
 
-**API Pattern** (matching mcp-hubby):
+**Operations** (31 total):
 
-```
-POST /api/machina
-{
-  "action": "describe"  // Lists available services
-}
+- Messages: send, read, recent, search, conversations
+- Notes: list, read, create, search
+- Reminders: list, create, complete
+- Contacts: search, get
+- WhatsApp: send, chats, messages, search, contacts, status, raw_sql
+- System: update (auto-restart), status
+- Advanced: raw_applescript (escape hatch)
 
-POST /api/machina
-{
-  "action": "messages.send",
-  "params": { "to": "+1234567890", "body": "Hello" }
-}
-```
+### WhatsApp Service (services/whatsapp/)
 
-### apple-mcp
+**Purpose**: Bridge to WhatsApp Web via Baileys library.
 
-**Purpose**: Access to native Apple apps via AppleScript.
+**Location**: `~/machina/services/whatsapp/server.ts`
 
-**Source**: https://github.com/TechNickAI/apple-mcp (forked from supermemoryai)
+**Architecture**:
 
-**Location**: `~/machina/components/apple-mcp/`
+- Baileys maintains WebSocket connection to WhatsApp servers
+- Messages synced to local SQLite database
+- HTTP API on port 9901 for sending messages
+- Gateway reads SQLite directly for queries (faster)
 
-**Capabilities**:
+**Why this design**:
 
-- Messages: Send, read, schedule iMessage
-- Mail: Send, search, read emails
-- Calendar: Create, search, list events
-- Notes: Create, search, list notes
-- Reminders: Create, list, search reminders
-- Contacts: Search, lookup contacts
-- Maps: Search locations, get directions
-
-**How it works**: TypeScript calls `osascript` subprocess to execute AppleScript.
-Each Apple app has a utility file in `utils/` with specific AppleScript commands.
-
-**Maturity**: Excellent. 8,300 lines, 100+ tests, production quality.
-
-### whatsapp-mcp
-
-**Purpose**: WhatsApp messaging via WhatsApp Web protocol.
-
-**Source**: https://github.com/lharries/whatsapp-mcp
-
-**Location**: `~/machina/components/whatsapp-mcp/`
-
-**Architecture**: Two-layer bridge
-
-- Go bridge: Connects to WhatsApp Web, handles encryption, stores messages in SQLite
-- Python MCP: Exposes tools to Claude, queries database, calls Go HTTP API
-
-**Capabilities**:
-
-- Send text messages
-- Send media (images, video, documents)
-- Send voice messages (auto-converts to Opus)
-- Read message history
-- Search contacts and chats
-
-**Authentication**: QR code scan on first run, session persists ~20 days.
-
-**Maturity**: Good. Stable, actively maintained.
+- Reads via SQLite: No network round-trip, works even if connection hiccups
+- Sends via HTTP: Requires live WebSocket that only the service maintains
+- Separation of concerns: Gateway handles MCP, service handles WhatsApp protocol
 
 ## Networking
 
@@ -155,7 +116,7 @@ Even with Tailscale, we add token auth:
 
 - Token stored in `~/machina/config/.env` as `MACHINA_TOKEN`
 - Passed via `Authorization: Bearer` header
-- Gateway validates before routing
+- Gateway validates before processing
 
 Defense in depth: Tailscale for network isolation, token for application auth.
 
@@ -163,7 +124,7 @@ Defense in depth: Tailscale for network isolation, token for application auth.
 
 ### LaunchD
 
-macOS native service manager. Each component gets a plist:
+macOS native service manager. Each service gets a plist:
 
 ```xml
 <!-- ~/Library/LaunchAgents/com.machina.gateway.plist -->
@@ -173,9 +134,9 @@ macOS native service manager. Each component gets a plist:
     <string>com.machina.gateway</string>
     <key>ProgramArguments</key>
     <array>
-      <string>/Users/nick/.bun/bin/bun</string>
-      <string>run</string>
-      <string>/Users/nick/machina/components/gateway/src/index.ts</string>
+      <string>/usr/local/bin/node</string>
+      <string>/Users/nick/machina/node_modules/.bin/tsx</string>
+      <string>/Users/nick/machina/server/index.ts</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -193,33 +154,19 @@ macOS native service manager. Each component gets a plist:
 - `KeepAlive`: Restart if crashes
 - Logs to `~/machina/logs/`
 
-### Service Hierarchy
-
-```
-com.machina.gateway      (HTTP server - depends on others)
-    │
-    ├── com.machina.apple     (apple-mcp - standalone)
-    │
-    └── com.machina.whatsapp  (whatsapp Go bridge - standalone)
-```
-
-Gateway starts last, depends on backends being available.
-
 ## Data Flow Example: Send iMessage
 
-1. Cloud AI sends request:
+1. Cloud AI sends MCP request:
 
-   ```
-   POST https://mac-mini.tailnet:9900/api/machina
-   Authorization: Bearer xxx
-   { "action": "messages.send", "params": { "to": "Mom", "body": "Hi!" } }
+   ```json
+   { "action": "messages_send", "params": { "to": "Mom", "body": "Hi!" } }
    ```
 
-2. Gateway validates token, routes to apple-mcp handler
+2. Gateway validates token, routes to messages_send handler
 
-3. apple-mcp resolves "Mom" via Contacts, gets phone number
+3. Handler resolves "Mom" via Contacts AppleScript
 
-4. apple-mcp executes AppleScript:
+4. Handler executes AppleScript:
 
    ```applescript
    tell application "Messages"
@@ -237,23 +184,24 @@ Gateway starts last, depends on backends being available.
 
 ```
 ~/machina/
-├── knowledge/              # This repo - the orchestrator
+├── server/                # MCP Gateway code
+│   ├── index.ts          # Main server (Express + MCP)
+│   └── trigger-permissions.ts
+│
+├── services/             # Optional services
+│   └── whatsapp/         # WhatsApp HTTP wrapper
+│
+├── knowledge/            # This documentation
 │   ├── product/
 │   ├── setup/
 │   ├── update/
 │   └── maintenance/
 │
-├── components/             # Cloned repos (not in git)
-│   ├── apple-mcp/
-│   ├── whatsapp-mcp/
-│   └── gateway/
-│
 ├── config/
-│   └── .env               # MACHINA_TOKEN (only secret needed)
+│   └── .env              # MACHINA_TOKEN
 │
 └── logs/
     ├── gateway.log
-    ├── apple.log
     └── whatsapp.log
 ```
 
@@ -262,19 +210,20 @@ Gateway starts last, depends on backends being available.
 1. **Network**: Tailscale VPN - only your devices can reach Mac
 2. **Application**: Token validates each request
 3. **Process**: Services run as your user, not root
-4. **Permissions**: macOS grants access per-app (Messages, Mail, etc.)
+4. **Permissions**: macOS grants access per-app (Messages, Notes, etc.)
+5. **Read-only databases**: SQLite access is read-only where possible
+6. **SQL injection prevention**: LIKE escaping, parameterized queries
 
 **Required macOS permissions**:
 
-- Automation: Allow terminal/Claude to control Messages, Mail, etc.
+- Automation: Allow terminal/Claude to control Messages, Notes, etc.
 - Full Disk Access: Required for reading message databases directly
-- Accessibility: If using screen automation (future)
 
 ## Future Expansion
 
 ### Desktop Commander Integration
 
-Add terminal and filesystem access via DesktopCommanderMCP:
+Add terminal and filesystem access:
 
 - Execute shell commands
 - Read/write files

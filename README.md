@@ -36,7 +36,7 @@ Machina provides:
 **Optional:**
 
 - Homebrew (Claude will install if needed)
-- Bun (Claude will install if needed)
+- Node.js 22+ (Claude will install if needed)
 
 ### Quick Start
 
@@ -55,9 +55,9 @@ Then run: **`/machina`**
 
 Claude will:
 
-1. ✅ Verify prerequisites (Tailscale, macOS version)
+1. ✅ Verify prerequisites (Tailscale, macOS version, Node.js)
 2. 🔐 Trigger all permission prompts at once (approve them all)
-3. 📦 Install Bun and dependencies
+3. 📦 Install dependencies
 4. 🔑 Generate authentication token
 5. 🚀 Start the MCP gateway
 6. 🌐 Configure Tailscale HTTPS access
@@ -82,20 +82,20 @@ Traditional installers follow deterministic steps and break on edge cases. Machi
 **Why this works:**
 
 - Claude can assess: "Is Homebrew installed? What permissions are granted?"
-- Claude can adapt: "Bun not found - installing it first"
+- Claude can adapt: "Node.js not found - installing it first"
 - Claude can debug: "AppleScript permission error - checking System Preferences"
 - Claude can verify: "Sending test message to confirm iMessage works"
 - Claude can ask: "Do you want WhatsApp? This requires QR authentication."
 
 ## Capabilities
 
-| Capability | Implementation                                                  | Status     |
-| ---------- | --------------------------------------------------------------- | ---------- |
-| iMessage   | Direct SQLite + AppleScript                                     | ✅ Ready   |
-| Notes      | AppleScript                                                     | ✅ Ready   |
-| Reminders  | AppleScript                                                     | ✅ Ready   |
-| Contacts   | AppleScript                                                     | ✅ Ready   |
-| WhatsApp   | [whatsapp-mcp](https://github.com/lharries/whatsapp-mcp) bridge | 🚧 Planned |
+| Capability | Implementation                                | Status   |
+| ---------- | --------------------------------------------- | -------- |
+| iMessage   | Direct SQLite + AppleScript                   | ✅ Ready |
+| Notes      | AppleScript                                   | ✅ Ready |
+| Reminders  | AppleScript                                   | ✅ Ready |
+| Contacts   | AppleScript                                   | ✅ Ready |
+| WhatsApp   | Baileys library + SQLite (optional, needs QR) | ✅ Ready |
 
 All operations use the **progressive disclosure** pattern - one `machina` tool, operations discovered via `describe` action.
 
@@ -111,6 +111,8 @@ graph TB
         GW
         AS[AppleScript Engine]
         DB[(Messages DB<br/>SQLite)]
+        WA[WhatsApp Service<br/>:9901]
+        WADB[(WhatsApp DB<br/>SQLite)]
 
         subgraph "macOS Apps"
             MSG[Messages]
@@ -124,6 +126,8 @@ graph TB
     TS -->|Port 9900| GW
     GW -->|Direct SQLite| DB
     GW -->|AppleScript| AS
+    GW -->|HTTP/SQLite| WA
+    WA -->|Baileys| WADB
     AS --> MSG
     AS --> NOTES
     AS --> REM
@@ -133,14 +137,15 @@ graph TB
     style TS fill:#fff3cd
     style GW fill:#d4edda
     style AS fill:#f8d7da
+    style WA fill:#dcf8c6
 ```
 
 **Key points:**
 
 - **Progressive disclosure:** One `machina` tool, operations discovered on-demand
-- **Direct access:** SQLite for Messages (faster), AppleScript for others
+- **Direct access:** SQLite for Messages/WhatsApp (faster), AppleScript for others
 - **Secure:** Tailscale encrypted tunnel + bearer token auth
-- **Simple:** Single Bun process, no complex orchestration
+- **Simple:** Single Node.js process + optional WhatsApp service
 
 ## Updates
 

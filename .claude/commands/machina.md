@@ -307,24 +307,74 @@ curl -s -X POST 'http://localhost:9900/mcp' \
 - WhatsApp DB: Returns status (should work immediately)
 - Messages DB: Returns recent message OR "unable to open database file" (needs FDA - see Step 9)
 
-#### Step 11: Provide MCP Configuration
+#### Step 11: Configure Tailscale Serve
+
+Check if Tailscale serve is already configured for port 9900:
+
+```bash
+# Check current serve status
+tailscale serve status 2>&1
+```
+
+**If output shows `proxy http://127.0.0.1:9900`** → Already configured, skip to Step 12.
+
+**If output shows nothing or a different port** → Configure it:
+
+```bash
+# Enable HTTPS proxy (proxies port 443 → 9900)
+tailscale serve https:443 / http://127.0.0.1:9900
+
+# Verify it's serving
+tailscale serve status
+```
+
+Get the hostname:
+
+```bash
+tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//'
+```
+
+#### Step 12: Provide MCP Configuration
 
 Give user the MCP config for their AI client:
+
+**For local access:**
 
 ```json
 {
   "mcpServers": {
     "machina": {
-      "url": "http://localhost:9900/mcp",
-      "headers": {
-        "Authorization": "Bearer TOKEN_VALUE"
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://localhost:9900/mcp",
+        "headers": {
+          "Authorization": "Bearer TOKEN_VALUE"
+        }
       }
     }
   }
 }
 ```
 
-For remote access via Tailscale, replace `localhost:9900` with `your-mac.tailnet.ts.net:9900`.
+**For remote access via Tailscale:**
+
+```json
+{
+  "mcpServers": {
+    "machina": {
+      "transport": {
+        "type": "streamable-http",
+        "url": "https://YOUR-MAC.tailnet.ts.net/mcp",
+        "headers": {
+          "Authorization": "Bearer TOKEN_VALUE"
+        }
+      }
+    }
+  }
+}
+```
+
+Replace `YOUR-MAC.tailnet.ts.net` with your actual Tailscale hostname and `TOKEN_VALUE` with the generated token.
 
 ### 2b. UPDATE (Already Installed)
 
@@ -348,14 +398,17 @@ Installed: iMessage, WhatsApp, Notes, Reminders, Contacts
 Services:
   - Gateway: Running on port 9900 (PID 12345)
   - WhatsApp: Running on port 9901 (PID 12346)
-Remote: https://your-mac.tailnet.ts.net/
+Remote: https://your-mac.tailnet.ts.net/mcp
 
 MCP Config:
 {
   "mcpServers": {
     "machina": {
-      "url": "http://localhost:9900/mcp",
-      "headers": { "Authorization": "Bearer abc123..." }
+      "transport": {
+        "type": "streamable-http",
+        "url": "https://your-mac.tailnet.ts.net/mcp",
+        "headers": { "Authorization": "Bearer abc123..." }
+      }
     }
   }
 }
@@ -446,16 +499,19 @@ When the user asks for the MCP config (e.g., "give me the MCP config", "MCP conf
 cat ~/machina/config/.env | grep MACHINA_TOKEN | cut -d= -f2
 ```
 
-### 2. Check if Tailscale is serving
+### 2. Check and configure Tailscale serve
 
 ```bash
-tailscale serve status 2>/dev/null
+tailscale serve status 2>&1
 ```
 
-- If output shows port 9900 being served → Use Tailscale URL
-- If error or not serving → Use localhost
+**If output does NOT show `proxy http://127.0.0.1:9900`**, configure it:
 
-### 3. Get Tailscale hostname (if serving)
+```bash
+tailscale serve https:443 / http://127.0.0.1:9900
+```
+
+### 3. Get Tailscale hostname
 
 ```bash
 tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//'
@@ -463,30 +519,36 @@ tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//'
 
 ### 4. Output the config
 
-**If Tailscale is serving:**
+**For remote access:**
 
 ```json
 {
   "mcpServers": {
     "machina": {
-      "url": "https://<TAILSCALE_HOSTNAME>/mcp",
-      "headers": {
-        "Authorization": "Bearer <TOKEN>"
+      "transport": {
+        "type": "streamable-http",
+        "url": "https://<TAILSCALE_HOSTNAME>/mcp",
+        "headers": {
+          "Authorization": "Bearer <TOKEN>"
+        }
       }
     }
   }
 }
 ```
 
-**If local only:**
+**For local access:**
 
 ```json
 {
   "mcpServers": {
     "machina": {
-      "url": "http://localhost:9900/mcp",
-      "headers": {
-        "Authorization": "Bearer <TOKEN>"
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://localhost:9900/mcp",
+        "headers": {
+          "Authorization": "Bearer <TOKEN>"
+        }
       }
     }
   }

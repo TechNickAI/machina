@@ -54,9 +54,9 @@ Use the API to send a test message to yourself or a known contact.
 
 ### WhatsApp (if enabled)
 
-Check the Go bridge is running. Logs should show "Connected" or similar.
+Check the WhatsApp service is running on port 9901. Logs should show connection status.
 
-If not connected, may need to re-authenticate with QR code.
+If disconnected, may need to re-authenticate with QR code (delete auth_info and restart).
 
 ### Remote Access (if Tailscale enabled)
 
@@ -120,9 +120,12 @@ For Claude Desktop, Cursor, or other MCP-compatible tools.
 {
   "mcpServers": {
     "machina": {
-      "url": "http://localhost:9900/mcp",
-      "headers": {
-        "Authorization": "Bearer <MACHINA_TOKEN>"
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://localhost:9900/mcp",
+        "headers": {
+          "Authorization": "Bearer <MACHINA_TOKEN>"
+        }
       }
     }
   }
@@ -135,9 +138,12 @@ For Claude Desktop, Cursor, or other MCP-compatible tools.
 {
   "mcpServers": {
     "machina": {
-      "url": "https://<TAILSCALE_HOST>/mcp",
-      "headers": {
-        "Authorization": "Bearer <MACHINA_TOKEN>"
+      "transport": {
+        "type": "streamable-http",
+        "url": "https://<TAILSCALE_HOST>/mcp",
+        "headers": {
+          "Authorization": "Bearer <MACHINA_TOKEN>"
+        }
       }
     }
   }
@@ -146,14 +152,12 @@ For Claude Desktop, Cursor, or other MCP-compatible tools.
 
 Replace `<TAILSCALE_HOST>` and `<MACHINA_TOKEN>` with the values from above.
 
-Note: Machina uses stateless JSON mode, not streaming. Each request returns a complete JSON response.
+### Enable Tailscale Serve (required for remote access)
 
-### Enable Tailscale HTTPS (if not already)
-
-Run:
+Run on the Mac:
 
 ```bash
-tailscale serve --bg http://localhost:9900
+tailscale serve https:443 / http://127.0.0.1:9900
 ```
 
 If prompted, visit the URL to enable Tailscale Serve on your tailnet.

@@ -37,7 +37,7 @@ Add Terminal or the app running machina. Restart the app after granting.
 
 ### Package not found
 
-Install with Homebrew: Bun, Go, Python, ffmpeg.
+Install with Homebrew: Node.js 22+ (`brew install node@22`).
 
 ### Build fails
 

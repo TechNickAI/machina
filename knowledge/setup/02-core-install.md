@@ -17,22 +17,22 @@
 git clone https://github.com/TechNickAI/machina ~/machina
 ```
 
-2. **Install Bun** (if needed):
+2. **Install Node.js 22+** (if needed):
 
 ```bash
-curl -fsSL https://bun.sh/install | bash
+brew install node@22
 ```
 
 3. **Install dependencies**:
 
 ```bash
-cd ~/machina && bun install
+cd ~/machina && npm install
 ```
 
 4. **Trigger all permissions at once** (frontloads permission dialogs):
 
 ```bash
-bun run server/trigger-permissions.ts
+npm run permissions
 ```
 
 This will trigger permission prompts for:
@@ -62,26 +62,24 @@ echo "Token: $TOKEN"
 
 ```bash
 export MACHINA_TOKEN=$(cat ~/machina/config/.env | grep MACHINA_TOKEN | cut -d= -f2)
-bun run server/index.ts
+npm start
 ```
 
 Or **background with logging**:
 
 ```bash
 export MACHINA_TOKEN=$(cat ~/machina/config/.env | grep MACHINA_TOKEN | cut -d= -f2)
-nohup bun run server/index.ts >> ~/machina/logs/gateway.log 2>&1 &
+nohup npm start >> ~/machina/logs/gateway.log 2>&1 &
 ```
 
 7. **Verify**: `curl http://localhost:9900/health` should return `{"status":"ok","version":"..."}`
 
 ## WhatsApp Bridge (Optional)
 
-Only if user wants WhatsApp support.
+Only if user wants WhatsApp support. See `components/whatsapp.md` for full setup.
 
-Clone from `lharries/whatsapp-mcp` and build the Go bridge.
-Run on port 3001. The gateway can proxy WhatsApp requests to it.
-
-(WhatsApp integration not yet implemented in gateway)
+The WhatsApp service uses Baileys library and runs on port 9901. It requires one-time
+QR code authentication from your phone.
 
 ## Next Steps
 
