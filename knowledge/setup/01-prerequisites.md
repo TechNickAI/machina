@@ -54,7 +54,7 @@ Verify by checking if `~/Library/Messages/chat.db` is readable.
 
 ### For Local-Only Setup
 
-No special requirements. Gateway runs on localhost:8080.
+No special requirements. Gateway runs on localhost:9900.
 
 ### For Remote Access
 

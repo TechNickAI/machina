@@ -10,56 +10,254 @@ Smart setup and update for Machina. Detects current state and does the right thi
 
 ### 1. Detect Current State
 
-Check if Machina is already installed by looking for installation artifacts:
+Check installation status:
 
 ```bash
 # Check for config file (created during setup)
 ls ~/machina/config/.env 2>/dev/null
 
-# Check for LaunchD plist (created during setup)
+# Check for LaunchD plists
 ls ~/Library/LaunchAgents/com.machina.gateway.plist 2>/dev/null
+ls ~/Library/LaunchAgents/com.machina.whatsapp.plist 2>/dev/null
 ```
 
 - **If config file exists** → Already installed, do UPDATE
 - **If config file doesn't exist** → Not installed, do SETUP
 
-Then check if service is running:
+Check service health:
 
 ```bash
-curl -s http://localhost:8080/health
-```
+# Gateway health
+curl -s http://localhost:9900/health
 
-- **If installed but health fails** → Service down, restart it during UPDATE
+# WhatsApp service health
+curl -s http://localhost:9901/health
+```
 
 ### 2a. SETUP (Not Installed)
 
-Read and follow `knowledge/setup/README.md`:
+#### Step 1: Prerequisites
 
-1. Verify prerequisites (macOS, Tailscale installed)
-2. Ask user which capabilities they want
-3. Install Bun and dependencies
-4. Trigger permission prompts
-5. Generate auth token
-6. Start gateway service
-7. Configure Tailscale (if selected)
-8. Set up LaunchD for auto-start
-9. Provide MCP configuration
-10. Offer to run `/machina-verify`
+Verify macOS and required tools:
 
-**Key**: Must run from Terminal/VNC, not SSH (permission prompts need GUI)
+```bash
+# Check for Bun
+which bun || curl -fsSL https://bun.sh/install | bash
+
+# Check for Node (needed for WhatsApp service)
+which node || echo "Install Node.js via nvm or brew"
+
+# Create directories
+mkdir -p ~/machina/{config,components,logs}
+mkdir -p ~/src
+```
+
+#### Step 2: Ask User Preferences
+
+Ask the user:
+
+- Which capabilities? (iMessage, WhatsApp, Notes, Reminders, Contacts)
+- Remote access? (Tailscale recommended, or local only)
+- Auto-start on login? (recommended)
+
+#### Step 3: Clone Repositories
+
+```bash
+# Clone Machina (if not already in it)
+cd ~/src
+git clone https://github.com/your-org/machina.git 2>/dev/null || true
+
+# Clone WhatsApp MCP (if WhatsApp selected)
+git clone https://github.com/TechNickAI/whatsapp-mcp-ts.git 2>/dev/null || true
+
+# Create symlinks
+ln -sf ~/src/machina ~/machina/machina
+ln -sf ~/src/whatsapp-mcp-ts ~/machina/components/whatsapp-mcp-ts
+```
+
+#### Step 4: Install Dependencies
+
+```bash
+# Machina gateway
+cd ~/src/machina && bun install
+
+# WhatsApp service (if selected)
+cd ~/machina/components/whatsapp-mcp-ts && npm install
+```
+
+#### Step 5: Deploy WhatsApp Service
+
+The upstream whatsapp-mcp-ts uses stdio MCP. We need an HTTP service wrapper.
+
+Deploy the service from machina/services/:
+
+```bash
+# Copy the WhatsApp HTTP service wrapper
+cp ~/src/machina/services/whatsapp/server.ts ~/machina/components/whatsapp-mcp-ts/src/server.ts
+```
+
+The service provides:
+
+- `/health` - Connection status check
+- `/api/send` - Send messages via POST
+
+#### Step 6: Generate Auth Token
+
+```bash
+# Generate secure token
+MACHINA_TOKEN=$(openssl rand -hex 32)
+echo "MACHINA_TOKEN=$MACHINA_TOKEN" > ~/machina/config/.env
+echo "Token generated: $MACHINA_TOKEN"
+```
+
+#### Step 7: WhatsApp First-Time Authentication
+
+**IMPORTANT**: This step requires GUI access (Terminal app or VNC). QR code won't display over SSH.
+
+```bash
+cd ~/machina/components/whatsapp-mcp-ts
+node src/server.ts
+```
+
+1. A browser window opens with QR code
+2. On phone: WhatsApp → Settings → Linked Devices → Link a Device → Scan QR
+3. Wait for "WhatsApp service running on port 9901" message
+4. Ctrl+C to stop (LaunchD will manage it)
+
+Verify authentication worked:
+
+```bash
+ls ~/machina/components/whatsapp-mcp-ts/auth_info/creds.json
+```
+
+#### Step 8: Create LaunchD Services
+
+**Gateway plist** (`~/Library/LaunchAgents/com.machina.gateway.plist`):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.machina.gateway</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>NODE_PATH/bun</string>
+        <string>run</string>
+        <string>server/index.ts</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>USER_HOME/src/machina</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>MACHINA_PORT</key>
+        <string>9900</string>
+        <key>MACHINA_TOKEN</key>
+        <string>TOKEN_VALUE</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>USER_HOME/machina/logs/gateway-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>USER_HOME/machina/logs/gateway-stderr.log</string>
+</dict>
+</plist>
+```
+
+**WhatsApp plist** (`~/Library/LaunchAgents/com.machina.whatsapp.plist`):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.machina.whatsapp</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>NODE_PATH/node</string>
+        <string>src/server.ts</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>USER_HOME/machina/components/whatsapp-mcp-ts</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>WHATSAPP_PORT</key>
+        <string>9901</string>
+        <key>WHATSAPP_MCP_DATA_DIR</key>
+        <string>USER_HOME/machina/components/whatsapp-mcp-ts</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>USER_HOME/machina/logs/whatsapp-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>USER_HOME/machina/logs/whatsapp-stderr.log</string>
+</dict>
+</plist>
+```
+
+Replace `USER_HOME`, `NODE_PATH`, and `TOKEN_VALUE` with actual values.
+
+Load services:
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.machina.gateway.plist
+launchctl load ~/Library/LaunchAgents/com.machina.whatsapp.plist
+```
+
+#### Step 9: Verify Everything Works
+
+```bash
+# Gateway health
+curl -s http://localhost:9900/health
+
+# WhatsApp health
+curl -s http://localhost:9901/health
+
+# Test gateway operation
+curl -s -X POST http://localhost:9900/mcp \
+  -H "Authorization: Bearer $MACHINA_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"machina","arguments":{"action":"describe"}},"id":1}'
+```
+
+#### Step 10: Provide MCP Configuration
+
+Give user the MCP config for their AI client:
+
+```json
+{
+  "mcpServers": {
+    "machina": {
+      "url": "http://localhost:9900/mcp",
+      "headers": {
+        "Authorization": "Bearer TOKEN_VALUE"
+      }
+    }
+  }
+}
+```
+
+For remote access via Tailscale, replace `localhost:9900` with `your-mac.tailnet.ts.net:9900`.
 
 ### 2b. UPDATE (Already Installed)
 
-Read and follow `knowledge/update/README.md`:
-
-1. Check for available updates (`git fetch`)
+1. Check for updates: `cd ~/src/machina && git fetch`
 2. If updates available:
-   - Pull latest code
-   - Update dependencies
-   - Restart service
-   - Report what changed
-3. If no updates: Report already up to date
-4. Offer to run `/machina-verify`
+   - `git pull`
+   - `bun install`
+   - Restart services: `launchctl kickstart -k gui/$(id -u)/com.machina.gateway`
+3. Check WhatsApp updates: `cd ~/machina/components/whatsapp-mcp-ts && git pull && npm install`
+4. Restart WhatsApp: `launchctl kickstart -k gui/$(id -u)/com.machina.whatsapp`
+5. Verify health endpoints
 
 ## Output
 
@@ -68,12 +266,21 @@ Read and follow `knowledge/update/README.md`:
 ```
 Setup complete!
 
-Installed: iMessage, Notes, Reminders, Contacts
-Service: Running on port 8080 (PID 12345)
+Installed: iMessage, WhatsApp, Notes, Reminders, Contacts
+Services:
+  - Gateway: Running on port 9900 (PID 12345)
+  - WhatsApp: Running on port 9901 (PID 12346)
 Remote: https://your-mac.tailnet.ts.net/
 
 MCP Config:
-{...}
+{
+  "mcpServers": {
+    "machina": {
+      "url": "http://localhost:9900/mcp",
+      "headers": { "Authorization": "Bearer abc123..." }
+    }
+  }
+}
 
 Would you like me to run verification?
 ```
@@ -81,11 +288,98 @@ Would you like me to run verification?
 ### After Update
 
 ```
-Updated from v1.1.0 to v1.2.0
+Updated Machina from v1.1.0 to v1.2.0
+Updated WhatsApp MCP (3 new commits)
 
-Changes:
-- abc1234 Add verification skill
-- def5678 Fix robustness issues
+Services restarted. Health check:
+  - Gateway: OK
+  - WhatsApp: connected (Nick Sullivan)
 
-Service restarted. Would you like me to run verification?
+Would you like me to run verification?
 ```
+
+## Troubleshooting
+
+### WhatsApp shows "disconnected"
+
+Session may have expired. Re-authenticate:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.machina.whatsapp.plist
+rm -rf ~/machina/components/whatsapp-mcp-ts/auth_info
+cd ~/machina/components/whatsapp-mcp-ts && node src/server.ts
+# Scan QR code, then Ctrl+C
+launchctl load ~/Library/LaunchAgents/com.machina.whatsapp.plist
+```
+
+### Gateway returns 401
+
+Token mismatch. Check `~/machina/config/.env` matches the plist and your MCP config.
+
+### Services not starting
+
+Check logs:
+
+```bash
+tail -50 ~/machina/logs/gateway-stderr.log
+tail -50 ~/machina/logs/whatsapp-stderr.log
+```
+
+## Get MCP Configuration
+
+When the user asks for the MCP config (e.g., "give me the MCP config", "MCP configuration URL"):
+
+### 1. Get the token
+
+```bash
+cat ~/machina/config/.env | grep MACHINA_TOKEN | cut -d= -f2
+```
+
+### 2. Check if Tailscale is serving
+
+```bash
+tailscale serve status 2>/dev/null
+```
+
+- If output shows port 9900 being served → Use Tailscale URL
+- If error or not serving → Use localhost
+
+### 3. Get Tailscale hostname (if serving)
+
+```bash
+tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//'
+```
+
+### 4. Output the config
+
+**If Tailscale is serving:**
+
+```json
+{
+  "mcpServers": {
+    "machina": {
+      "url": "https://<TAILSCALE_HOSTNAME>/mcp",
+      "headers": {
+        "Authorization": "Bearer <TOKEN>"
+      }
+    }
+  }
+}
+```
+
+**If local only:**
+
+```json
+{
+  "mcpServers": {
+    "machina": {
+      "url": "http://localhost:9900/mcp",
+      "headers": {
+        "Authorization": "Bearer <TOKEN>"
+      }
+    }
+  }
+}
+```
+
+Replace `<TAILSCALE_HOSTNAME>` and `<TOKEN>` with actual values from the commands above.

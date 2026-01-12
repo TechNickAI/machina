@@ -16,7 +16,7 @@ capabilities.
 │  └── logs/                     └── gateway/                        │
 │                                                                     │
 │  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                    HTTP Gateway (port 8080)                  │   │
+│  │                    HTTP Gateway (port 9900)                  │   │
 │  │              Hono server with token auth                     │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │                              │                                      │
@@ -210,7 +210,7 @@ Gateway starts last, depends on backends being available.
 1. Cloud AI sends request:
 
    ```
-   POST https://mac-mini.tailnet:8080/api/machina
+   POST https://mac-mini.tailnet:9900/api/machina
    Authorization: Bearer xxx
    { "action": "messages.send", "params": { "to": "Mom", "body": "Hi!" } }
    ```

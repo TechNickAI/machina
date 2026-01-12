@@ -8,7 +8,7 @@ This folder contains knowledge for Claude to bootstrap machina on a Mac.
 
 After setup completes:
 
-1. HTTP gateway running on port 8080
+1. HTTP gateway running on port 9900
 2. Token authentication configured
 3. Selected services installed (iMessage, WhatsApp, etc.)
 4. LaunchD configured for auto-start

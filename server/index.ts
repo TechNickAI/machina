@@ -16,6 +16,7 @@
 import express, { Request, Response, NextFunction } from "express";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+import Database from "better-sqlite3";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -25,7 +26,7 @@ import {
 
 const execAsync = promisify(exec);
 
-const PORT = parseInt(process.env.MACHINA_PORT || "8080", 10);
+const PORT = parseInt(process.env.MACHINA_PORT || "9900", 10);
 const TOKEN = process.env.MACHINA_TOKEN;
 
 if (!TOKEN) {
@@ -383,6 +384,142 @@ const operations: Operation[] = [
     returns: "Version info, uptime, and health status",
     example: "machina(action='system_status')",
   },
+  // ============== WHATSAPP ==============
+  {
+    name: "whatsapp_send",
+    description: "Send a WhatsApp message to a contact or group",
+    parameters: [
+      {
+        name: "to",
+        type: "string",
+        required: true,
+        description:
+          "Recipient JID (e.g., '15551234567@s.whatsapp.net' or group JID)",
+      },
+      {
+        name: "message",
+        type: "string",
+        required: true,
+        description: "Message text to send",
+      },
+    ],
+    returns: "Confirmation with message ID",
+    example:
+      "machina(action='whatsapp_send', params={to: '15551234567@s.whatsapp.net', message: 'Hello!'})",
+  },
+  {
+    name: "whatsapp_chats",
+    description: "List WhatsApp conversations with recent activity",
+    parameters: [
+      {
+        name: "limit",
+        type: "number",
+        required: false,
+        description: "Maximum number of chats to return",
+        default: 20,
+      },
+      {
+        name: "query",
+        type: "string",
+        required: false,
+        description: "Filter by chat name or JID",
+      },
+    ],
+    returns: "List of chats with name, JID, and last message time",
+    example: "machina(action='whatsapp_chats', params={limit: 10})",
+  },
+  {
+    name: "whatsapp_messages",
+    description: "Read messages from a specific WhatsApp chat",
+    parameters: [
+      {
+        name: "chatJid",
+        type: "string",
+        required: true,
+        description: "Chat JID (e.g., '15551234567@s.whatsapp.net')",
+      },
+      {
+        name: "limit",
+        type: "number",
+        required: false,
+        description: "Maximum number of messages to return",
+        default: 20,
+      },
+    ],
+    returns: "Messages with timestamp, sender, and content",
+    example:
+      "machina(action='whatsapp_messages', params={chatJid: '15551234567@s.whatsapp.net', limit: 50})",
+  },
+  {
+    name: "whatsapp_search",
+    description: "Search WhatsApp messages by text content",
+    parameters: [
+      {
+        name: "query",
+        type: "string",
+        required: true,
+        description: "Text to search for in message content",
+      },
+      {
+        name: "limit",
+        type: "number",
+        required: false,
+        description: "Maximum number of results",
+        default: 20,
+      },
+    ],
+    returns: "Matching messages with timestamp, sender, chat, and content",
+    example:
+      "machina(action='whatsapp_search', params={query: 'meeting', limit: 10})",
+  },
+  {
+    name: "whatsapp_contacts",
+    description: "Search WhatsApp contacts by name or phone number",
+    parameters: [
+      {
+        name: "query",
+        type: "string",
+        required: true,
+        description: "Name or phone number to search for",
+      },
+      {
+        name: "limit",
+        type: "number",
+        required: false,
+        description: "Maximum number of results",
+        default: 20,
+      },
+    ],
+    returns: "List of contacts with name and JID",
+    example:
+      "machina(action='whatsapp_contacts', params={query: 'John', limit: 10})",
+  },
+  {
+    name: "whatsapp_status",
+    description: "Check WhatsApp connection status",
+    parameters: [],
+    returns: "Connection status and logged-in user",
+    example: "machina(action='whatsapp_status')",
+  },
+  {
+    name: "whatsapp_raw_sql",
+    description:
+      "Execute a raw SQL query against the WhatsApp database (READ-ONLY). " +
+      "Use this for advanced queries not covered by standard operations. " +
+      "Tables: chats (jid, name, last_message_time), messages (id, chat_jid, sender, content, timestamp, is_from_me), contacts (jid, name, notify, phone_number).",
+    parameters: [
+      {
+        name: "sql",
+        type: "string",
+        required: true,
+        description:
+          "SELECT query to execute (INSERT/UPDATE/DELETE not allowed)",
+      },
+    ],
+    returns: "Query results as JSON array",
+    example:
+      "machina(action='whatsapp_raw_sql', params={sql: 'SELECT COUNT(*) as total FROM messages'})",
+  },
 ];
 
 // Generate describe output
@@ -392,6 +529,7 @@ function describeAll(): string {
   // Group by category
   const categories = {
     Messages: operations.filter((o) => o.name.startsWith("messages_")),
+    WhatsApp: operations.filter((o) => o.name.startsWith("whatsapp_")),
     Notes: operations.filter((o) => o.name.startsWith("notes_")),
     Reminders: operations.filter((o) => o.name.startsWith("reminders_")),
     Contacts: operations.filter((o) => o.name.startsWith("contacts_")),
@@ -453,11 +591,6 @@ function escapeSQL(str: string): string {
   return str.replace(/'/g, "''").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
-// Escape string for shell to prevent command injection
-function escapeShell(str: string): string {
-  return str.replace(/\$/g, "\\$").replace(/`/g, "\\`").replace(/"/g, '\\"');
-}
-
 // Ensure an app is running before AppleScript can talk to it
 async function ensureAppRunning(appName: string): Promise<void> {
   try {
@@ -489,16 +622,55 @@ async function runAppleScript(
   }
 }
 
-// SQLite query helper for Messages - escapes shell metacharacters
+// SQLite query helper for Messages
 async function queryMessagesDB(sql: string): Promise<string> {
   try {
-    const escapedSQL = escapeShell(sql);
-    const { stdout } = await execAsync(
-      `sqlite3 ~/Library/Messages/chat.db "${escapedSQL}"`,
-    );
-    return stdout.trim();
+    const dbPath = `${process.env.HOME}/Library/Messages/chat.db`;
+    const db = new Database(dbPath, { readonly: true });
+    const rows = db.prepare(sql).all();
+    db.close();
+    // Return formatted output similar to sqlite3 CLI
+    return rows.map((row) => Object.values(row).join("|")).join("\n");
   } catch (error: any) {
     throw new Error(`Messages database error: ${error.message}`);
+  }
+}
+
+// WhatsApp configuration
+const WHATSAPP_DB_PATH = `${process.env.HOME}/machina/components/whatsapp-mcp-ts/data/whatsapp.db`;
+const WHATSAPP_API_URL = "http://localhost:9901";
+
+// SQLite query helper for WhatsApp
+async function queryWhatsAppDB(sql: string): Promise<any[]> {
+  try {
+    // Open database in read-only mode for security
+    const db = new Database(WHATSAPP_DB_PATH, { readonly: true });
+    const rows = db.prepare(sql).all();
+    db.close();
+    return rows;
+  } catch (error: any) {
+    throw new Error(`WhatsApp database error: ${error.message}`);
+  }
+}
+
+// HTTP helper for WhatsApp daemon API
+async function callWhatsAppAPI(
+  endpoint: string,
+  method: "GET" | "POST" = "GET",
+  body?: Record<string, any>,
+): Promise<any> {
+  try {
+    const options: RequestInit = {
+      method,
+      headers: { "Content-Type": "application/json" },
+    };
+    if (body) {
+      options.body = JSON.stringify(body);
+    }
+    const response = await fetch(`${WHATSAPP_API_URL}${endpoint}`, options);
+    return await response.json();
+  } catch (error: any) {
+    throw new Error(`WhatsApp API error: ${error.message}`);
   }
 }
 
@@ -1041,6 +1213,164 @@ async function executeOperation(
       }
     }
 
+    // ============== WHATSAPP ==============
+    case "whatsapp_status": {
+      const result = await callWhatsAppAPI("/health");
+      return `WhatsApp status: ${result.status}\nUser: ${result.user || "Not connected"}`;
+    }
+
+    case "whatsapp_send": {
+      if (!params.to) throw new Error("Missing required parameter: to");
+      if (!params.message)
+        throw new Error("Missing required parameter: message");
+
+      const result = await callWhatsAppAPI("/api/send", "POST", {
+        recipient: params.to,
+        message: params.message,
+      });
+
+      if (result.success) {
+        return `Message sent to ${result.recipient}\nMessage ID: ${result.message_id}`;
+      } else {
+        throw new Error(result.error || "Failed to send message");
+      }
+    }
+
+    case "whatsapp_chats": {
+      const limit = Math.min(Math.max(1, params.limit || 20), 100);
+      let sql = `SELECT jid, name, last_message_time
+        FROM chats ORDER BY last_message_time DESC LIMIT ${limit}`;
+
+      if (params.query) {
+        const escaped = escapeSQL(params.query);
+        sql = `SELECT jid, name, last_message_time
+          FROM chats WHERE name LIKE '%${escaped}%' ESCAPE '\\' OR jid LIKE '%${escaped}%' ESCAPE '\\'
+          ORDER BY last_message_time DESC LIMIT ${limit}`;
+      }
+
+      const rows = await queryWhatsAppDB(sql);
+      if (rows.length === 0) return "No chats found";
+
+      return rows
+        .map(
+          (r) =>
+            `${r.name || r.jid} (${r.jid})\n  Last: ${r.last_message_time || "unknown"}`,
+        )
+        .join("\n\n");
+    }
+
+    case "whatsapp_messages": {
+      if (!params.chatJid)
+        throw new Error("Missing required parameter: chatJid");
+      const limit = Math.min(Math.max(1, params.limit || 20), 100);
+      const escaped = escapeSQL(params.chatJid);
+
+      const sql = `SELECT timestamp,
+        CASE WHEN is_from_me THEN 'Me' ELSE sender END as sender,
+        content
+        FROM messages
+        WHERE chat_jid = '${escaped}'
+        ORDER BY timestamp DESC LIMIT ${limit}`;
+
+      const rows = await queryWhatsAppDB(sql);
+      if (rows.length === 0)
+        return `No messages found for chat: ${params.chatJid}`;
+
+      return rows
+        .map((r) => `[${r.timestamp}] ${r.sender}: ${r.content}`)
+        .join("\n");
+    }
+
+    case "whatsapp_search": {
+      if (!params.query) throw new Error("Missing required parameter: query");
+      const limit = Math.min(Math.max(1, params.limit || 20), 100);
+      const escaped = escapeSQL(params.query);
+
+      const sql = `SELECT m.timestamp,
+        CASE WHEN m.is_from_me THEN 'Me' ELSE m.sender END as sender,
+        c.name as chat_name,
+        m.content
+        FROM messages m
+        LEFT JOIN chats c ON m.chat_jid = c.jid
+        WHERE m.content LIKE '%${escaped}%' ESCAPE '\\'
+        ORDER BY m.timestamp DESC LIMIT ${limit}`;
+
+      const rows = await queryWhatsAppDB(sql);
+      if (rows.length === 0)
+        return `No messages found matching: ${params.query}`;
+
+      return rows
+        .map(
+          (r) =>
+            `[${r.timestamp}] ${r.chat_name || "Unknown"} - ${r.sender}: ${r.content}`,
+        )
+        .join("\n");
+    }
+
+    case "whatsapp_contacts": {
+      if (!params.query) throw new Error("Missing required parameter: query");
+      const limit = Math.min(Math.max(1, params.limit || 20), 100);
+      const escaped = escapeSQL(params.query);
+
+      const sql = `SELECT jid, name FROM contacts
+        WHERE name LIKE '%${escaped}%' ESCAPE '\\' OR jid LIKE '%${escaped}%' ESCAPE '\\'
+        LIMIT ${limit}`;
+
+      const rows = await queryWhatsAppDB(sql);
+      if (rows.length === 0)
+        return `No contacts found matching: ${params.query}`;
+
+      return rows.map((r) => `${r.name || "Unknown"} (${r.jid})`).join("\n");
+    }
+
+    case "whatsapp_raw_sql": {
+      if (!params.sql) throw new Error("Missing required parameter: sql");
+
+      // Only allow SELECT queries (read-only)
+      const normalizedSql = params.sql.trim().toLowerCase();
+      if (!normalizedSql.startsWith("select")) {
+        throw new Error(
+          "Only SELECT queries are allowed. WhatsApp raw_sql is read-only.",
+        );
+      }
+
+      // Block dangerous keywords using word boundaries to avoid false positives
+      const dangerous = [
+        "insert",
+        "update",
+        "delete",
+        "drop",
+        "alter",
+        "create",
+        "attach",
+        "detach",
+        "pragma",
+        "load_extension",
+        "replace", // SQLite REPLACE is INSERT OR REPLACE (can modify data)
+      ];
+      for (const keyword of dangerous) {
+        const regex = new RegExp(`\\b${keyword}\\b`, "i");
+        if (regex.test(normalizedSql)) {
+          throw new Error(
+            `Query contains forbidden keyword: ${keyword}. WhatsApp raw_sql is read-only.`,
+          );
+        }
+      }
+
+      // Block SQL comments which could hide malicious code
+      if (normalizedSql.includes("--") || normalizedSql.includes("/*")) {
+        throw new Error("SQL comments are not allowed in raw queries.");
+      }
+
+      // Block semicolons to prevent statement chaining
+      if (params.sql.includes(";")) {
+        throw new Error("Semicolons are not allowed (no statement chaining).");
+      }
+
+      const rows = await queryWhatsAppDB(params.sql);
+      return JSON.stringify(rows, null, 2);
+    }
+
     default:
       throw new Error(
         `Unknown operation: ${action}\n\nUse action='describe' to see available operations.`,
@@ -1072,9 +1402,8 @@ const tools = [
   {
     name: "machina",
     description:
-      "Access the user's iCloud account on their Mac. " +
-      "This connects to a remote Mac running Machina, providing access to: " +
-      "Messages (send/read iMessages), Notes, Reminders, and Contacts. " +
+      "Access the user's Mac remotely via Machina gateway. " +
+      "Provides access to: Messages (iMessage), WhatsApp, Notes, Reminders, and Contacts. " +
       "Use action='describe' to see all operations.",
     inputSchema: {
       type: "object",

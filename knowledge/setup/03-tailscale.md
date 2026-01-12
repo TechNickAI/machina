@@ -5,14 +5,14 @@ Enable secure remote access to Machina via Tailscale.
 ## Prerequisites
 
 - Tailscale installed and connected
-- Machina gateway running on port 8080
+- Machina gateway running on port 9900
 
 ## Enable Tailscale Serve
 
 Tailscale Serve provides HTTPS termination for your MCP server.
 
 ```bash
-tailscale serve --bg http://localhost:8080
+tailscale serve --bg http://localhost:9900
 ```
 
 If you see "Serve is not enabled on your tailnet", visit the provided URL to enable it
@@ -30,7 +30,7 @@ Should show:
 
 ```
 https://<your-hostname>.ts.net/ (Funnel off)
-|-- / proxy http://127.0.0.1:8080
+|-- / proxy http://127.0.0.1:9900
 ```
 
 ## Test Remote Access

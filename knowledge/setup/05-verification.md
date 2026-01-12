@@ -21,7 +21,7 @@ If they agree, run the `/machina-verify` skill which tests:
 Hit the gateway health endpoint. Should return `{ "status": "ok" }`.
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:9900/health
 ```
 
 If this fails, check:
@@ -112,18 +112,32 @@ echo "Token: $MACHINA_TOKEN"
 
 ### MCP Config (copy this)
 
-For Claude Desktop, Cursor, or other MCP-compatible tools:
+For Claude Desktop, Cursor, or other MCP-compatible tools.
+
+**Local access:**
 
 ```json
 {
   "mcpServers": {
     "machina": {
-      "transport": {
-        "type": "streamable-http",
-        "url": "https://<TAILSCALE_HOST>/mcp",
-        "headers": {
-          "Authorization": "Bearer <MACHINA_TOKEN>"
-        }
+      "url": "http://localhost:9900/mcp",
+      "headers": {
+        "Authorization": "Bearer <MACHINA_TOKEN>"
+      }
+    }
+  }
+}
+```
+
+**Remote access via Tailscale:**
+
+```json
+{
+  "mcpServers": {
+    "machina": {
+      "url": "https://<TAILSCALE_HOST>/mcp",
+      "headers": {
+        "Authorization": "Bearer <MACHINA_TOKEN>"
       }
     }
   }
@@ -132,12 +146,14 @@ For Claude Desktop, Cursor, or other MCP-compatible tools:
 
 Replace `<TAILSCALE_HOST>` and `<MACHINA_TOKEN>` with the values from above.
 
+Note: Machina uses stateless JSON mode, not streaming. Each request returns a complete JSON response.
+
 ### Enable Tailscale HTTPS (if not already)
 
 Run:
 
 ```bash
-tailscale serve --bg http://localhost:8080
+tailscale serve --bg http://localhost:9900
 ```
 
 If prompted, visit the URL to enable Tailscale Serve on your tailnet.

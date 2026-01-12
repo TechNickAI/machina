@@ -14,7 +14,7 @@ to see error output.
 Check error logs. Common causes: missing token, wrong path, port in use, dependency
 not installed.
 
-For port conflicts, check what's using port 8080.
+For port conflicts, check what's using port 9900.
 
 ### WhatsApp disconnected
 
@@ -48,7 +48,7 @@ Update the package manager. Clear caches. Check dependency versions.
 ### Can't reach from Tailscale
 
 Check Tailscale is connected on both devices. Verify gateway is listening on `0.0.0.0`
-not just localhost. Check firewall isn't blocking port 8080.
+not just localhost. Check firewall isn't blocking port 9900.
 
 ### Token rejected
 
