@@ -355,7 +355,7 @@ const operations: Operation[] = [
 
   // ============== RAW APPLESCRIPT ==============
   {
-    name: "raw_applescript",
+    name: "system_raw_applescript",
     description:
       "Execute arbitrary AppleScript. Use this escape hatch for operations not covered by standard actions. " +
       "Be careful - this runs code directly on the Mac.",
@@ -369,7 +369,7 @@ const operations: Operation[] = [
     ],
     returns: "AppleScript execution result",
     example:
-      "machina(action='raw_applescript', params={script: 'tell application \"Finder\" to get name of startup disk'})",
+      "machina(action='system_raw_applescript', params={script: 'tell application \"Finder\" to get name of startup disk'})",
   },
 
   // ============== SYSTEM ==============
@@ -1142,7 +1142,7 @@ async function executeOperation(
     }
 
     // ============== RAW APPLESCRIPT ==============
-    case "raw_applescript": {
+    case "system_raw_applescript": {
       if (!params.script) throw new Error("Missing required parameter: script");
       return await runAppleScript(params.script);
     }
