@@ -16,7 +16,12 @@
 import express, { Request, Response, NextFunction } from "express";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+import { createRequire } from "node:module";
 import Database from "better-sqlite3";
+
+const require = createRequire(import.meta.url);
+const pkg = require("../package.json");
+const VERSION = pkg.version;
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -350,7 +355,7 @@ const operations: Operation[] = [
 
   // ============== RAW APPLESCRIPT ==============
   {
-    name: "raw_applescript",
+    name: "system_raw_applescript",
     description:
       "Execute arbitrary AppleScript. Use this escape hatch for operations not covered by standard actions. " +
       "Be careful - this runs code directly on the Mac.",
@@ -364,7 +369,7 @@ const operations: Operation[] = [
     ],
     returns: "AppleScript execution result",
     example:
-      "machina(action='raw_applescript', params={script: 'tell application \"Finder\" to get name of startup disk'})",
+      "machina(action='system_raw_applescript', params={script: 'tell application \"Finder\" to get name of startup disk'})",
   },
 
   // ============== SYSTEM ==============
@@ -522,48 +527,104 @@ const operations: Operation[] = [
   },
 ];
 
-// Generate describe output
-function describeAll(): string {
-  const lines = ["Available operations for Machina:\n"];
+// ============================================================================
+// SERVICE DEFINITIONS (mcp-hubby pattern: one tool per service)
+// ============================================================================
 
-  // Group by category
-  const categories = {
-    Messages: operations.filter((o) => o.name.startsWith("messages_")),
-    WhatsApp: operations.filter((o) => o.name.startsWith("whatsapp_")),
-    Notes: operations.filter((o) => o.name.startsWith("notes_")),
-    Reminders: operations.filter((o) => o.name.startsWith("reminders_")),
-    Contacts: operations.filter((o) => o.name.startsWith("contacts_")),
-    System: operations.filter((o) => o.name.startsWith("system_")),
-    Advanced: operations.filter((o) => o.name.startsWith("raw_")),
-  };
+interface ServiceDef {
+  name: string;
+  displayName: string;
+  description: string;
+  prefix: string;
+}
 
-  for (const [category, ops] of Object.entries(categories)) {
-    if (ops.length === 0) continue;
-    lines.push(`\n**${category}:**`);
-    for (const op of ops) {
-      const requiredParams = op.parameters
-        .filter((p) => p.required)
-        .map((p) => p.name)
-        .join(", ");
-      lines.push(
-        `  ${op.name}${requiredParams ? `(${requiredParams})` : ""} - ${op.description.split(".")[0]}`,
-      );
-    }
+const services: ServiceDef[] = [
+  {
+    name: "messages",
+    displayName: "Apple Messages",
+    description: "Read and send iMessages via Apple Messages app",
+    prefix: "messages_",
+  },
+  {
+    name: "whatsapp",
+    displayName: "WhatsApp",
+    description: "Read WhatsApp messages and chats",
+    prefix: "whatsapp_",
+  },
+  {
+    name: "notes",
+    displayName: "Apple Notes",
+    description: "Read and create notes in Apple Notes app",
+    prefix: "notes_",
+  },
+  {
+    name: "reminders",
+    displayName: "Apple Reminders",
+    description: "Create and manage Apple Reminders",
+    prefix: "reminders_",
+  },
+  {
+    name: "contacts",
+    displayName: "Apple Contacts",
+    description: "Search and view Apple Contacts",
+    prefix: "contacts_",
+  },
+  {
+    name: "machina",
+    displayName: "Machina",
+    description: "Update Machina server and check status",
+    prefix: "system_",
+  },
+];
+
+function getServiceOperations(service: ServiceDef): Operation[] {
+  return operations.filter((o) => o.name.startsWith(service.prefix));
+}
+
+function stripPrefix(opName: string, prefix: string): string {
+  return opName.startsWith(prefix) ? opName.slice(prefix.length) : opName;
+}
+
+// Generate describe output for a specific service
+function describeService(service: ServiceDef): string {
+  const ops = getServiceOperations(service);
+  const lines = [`Available operations for ${service.displayName}:\n`];
+
+  for (const op of ops) {
+    const shortName = stripPrefix(op.name, service.prefix);
+    const requiredParams = op.parameters
+      .filter((p) => p.required)
+      .map((p) => p.name)
+      .join(", ");
+    lines.push(
+      `  ${shortName}${requiredParams ? `(${requiredParams})` : ""} - ${op.description.split(".")[0]}`,
+    );
   }
 
+  lines.push("\n---");
+  lines.push(`Usage: ${service.name}(action='operation', params={...})`);
   lines.push(
-    "\nCall with action='describe', params={operation: 'name'} for detailed docs.",
+    "Tip: action='describe', params={operation: 'name'} for detailed docs",
   );
   return lines.join("\n");
 }
 
-function describeOperation(opName: string): string {
-  const op = operations.find((o) => o.name === opName);
+function describeOperationForService(
+  service: ServiceDef,
+  shortName: string,
+): string {
+  const fullName = service.prefix + shortName;
+  const op = operations.find((o) => o.name === fullName);
   if (!op) {
-    return `Unknown operation: ${opName}\n\nAvailable: ${operations.map((o) => o.name).join(", ")}`;
+    const available = getServiceOperations(service)
+      .map((o) => stripPrefix(o.name, service.prefix))
+      .join(", ");
+    return `Unknown operation: ${shortName}\n\nAvailable for ${service.displayName}: ${available}`;
   }
 
-  const lines = [`**${op.name}**\n${op.description}\n`];
+  const lines = [
+    `**${stripPrefix(op.name, service.prefix)}**\n${op.description}\n`,
+  ];
 
   if (op.parameters.length > 0) {
     lines.push("Parameters:");
@@ -574,11 +635,41 @@ function describeOperation(opName: string): string {
   }
 
   lines.push(`\nReturns: ${op.returns}`);
-  if (op.example) {
-    lines.push(`\nExample: ${op.example}`);
-  }
+  lines.push(
+    `\nUsage: ${service.name}(action='${stripPrefix(op.name, service.prefix)}', params={...})`,
+  );
 
   return lines.join("\n");
+}
+
+// Generate MCP tools array (one tool per service)
+function generateTools() {
+  return services.map((service) => {
+    const ops = getServiceOperations(service);
+    const opList = ops
+      .map((op) => {
+        const shortName = stripPrefix(op.name, service.prefix);
+        const requiredParams = op.parameters
+          .filter((p) => p.required)
+          .map((p) => p.name)
+          .join(", ");
+        return requiredParams ? `${shortName}(${requiredParams})` : shortName;
+      })
+      .join(", ");
+
+    return {
+      name: service.name,
+      description: `${service.description}. Operations: ${opList}. action='describe' for docs`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          action: { type: "string" },
+          params: { type: "object" },
+        },
+        required: ["action"],
+      },
+    };
+  });
 }
 
 // Escape string for AppleScript double-quoted strings
@@ -803,22 +894,38 @@ async function executeOperation(
     // ============== NOTES ==============
     case "notes_list": {
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const folderFilter = params.folder
-        ? `of folder "${escapeAppleScript(params.folder)}"`
-        : "";
-      const script = `tell application "Notes"
-        set noteList to {}
-        set allNotes to notes ${folderFilter}
-        set noteCount to count of allNotes
-        if noteCount > ${limit} then set noteCount to ${limit}
-        repeat with i from 1 to noteCount
-          set n to item i of allNotes
-          set noteTitle to name of n
-          set noteFolder to name of container of n
-          set end of noteList to noteFolder & ": " & noteTitle
-        end repeat
-        return noteList as text
-      end tell`;
+      let script: string;
+      if (params.folder) {
+        const escapedFolder = escapeAppleScript(params.folder);
+        script = `tell application "Notes"
+          set noteList to {}
+          set targetFolder to folder "${escapedFolder}"
+          set folderName to name of targetFolder
+          set allNotes to notes of targetFolder
+          set noteCount to count of allNotes
+          if noteCount > ${limit} then set noteCount to ${limit}
+          repeat with i from 1 to noteCount
+            set n to item i of allNotes
+            set end of noteList to folderName & ": " & name of n
+          end repeat
+          return noteList as text
+        end tell`;
+      } else {
+        script = `tell application "Notes"
+          set noteList to {}
+          set noteCount to 0
+          repeat with f in folders
+            if noteCount >= ${limit} then exit repeat
+            set folderName to name of f
+            repeat with n in notes of f
+              if noteCount >= ${limit} then exit repeat
+              set end of noteList to folderName & ": " & name of n
+              set noteCount to noteCount + 1
+            end repeat
+          end repeat
+          return noteList as text
+        end tell`;
+      }
       return await runAppleScript(script, "Notes");
     }
 
@@ -856,15 +963,17 @@ async function executeOperation(
       const limit = Math.min(Math.max(1, params.limit || 10), 100);
       const escapedQuery = escapeAppleScript(params.query);
       const script = `tell application "Notes"
-        set matchingNotes to (notes whose name contains "${escapedQuery}" or plaintext contains "${escapedQuery}")
         set noteList to {}
-        set noteCount to count of matchingNotes
-        if noteCount > ${limit} then set noteCount to ${limit}
-        repeat with i from 1 to noteCount
-          set n to item i of matchingNotes
-          set noteTitle to name of n
-          set noteFolder to name of container of n
-          set end of noteList to noteFolder & ": " & noteTitle
+        set noteCount to 0
+        repeat with f in folders
+          if noteCount >= ${limit} then exit repeat
+          set folderName to name of f
+          set matchingNotes to (notes of f whose name contains "${escapedQuery}" or plaintext contains "${escapedQuery}")
+          repeat with n in matchingNotes
+            if noteCount >= ${limit} then exit repeat
+            set end of noteList to folderName & ": " & name of n
+            set noteCount to noteCount + 1
+          end repeat
         end repeat
         return noteList as text
       end tell`;
@@ -1033,7 +1142,7 @@ async function executeOperation(
     }
 
     // ============== RAW APPLESCRIPT ==============
-    case "raw_applescript": {
+    case "system_raw_applescript": {
       if (!params.script) throw new Error("Missing required parameter: script");
       return await runAppleScript(params.script);
     }
@@ -1387,49 +1496,39 @@ async function executeOperation(
   }
 }
 
-// Handle the machina gateway tool
-async function handleMachinaTool(args: Record<string, any>): Promise<string> {
+// Handle a service tool call (mcp-hubby pattern: one tool per service)
+async function handleServiceTool(
+  serviceName: string,
+  args: Record<string, any>,
+): Promise<string> {
+  const service = services.find((s) => s.name === serviceName);
+  if (!service) {
+    return `Unknown service: ${serviceName}`;
+  }
+
   const action = args.action as string;
   const params = (args.params || {}) as Record<string, any>;
 
+  // No action = describe
   if (!action) {
-    return describeAll();
+    return describeService(service);
   }
 
+  // describe action
   if (action === "describe") {
     if (params.operation) {
-      return describeOperation(params.operation);
+      return describeOperationForService(service, params.operation);
     }
-    return describeAll();
+    return describeService(service);
   }
 
-  return await executeOperation(action, params);
+  // Execute the operation (add prefix back)
+  const fullAction = service.prefix + action;
+  return await executeOperation(fullAction, params);
 }
 
-// Single gateway tool with progressive disclosure
-const tools = [
-  {
-    name: "machina",
-    description:
-      "Access the user's Mac remotely via Machina gateway. " +
-      "Provides access to: Messages (iMessage), WhatsApp, Notes, Reminders, and Contacts. " +
-      "Use action='describe' to see all operations.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        action: {
-          type: "string",
-          description: "Operation to execute, or 'describe' for help",
-        },
-        params: {
-          type: "object",
-          description: "Parameters for the operation",
-        },
-      },
-      required: ["action"],
-    },
-  },
-];
+// Generate tools dynamically (one per service)
+const tools = generateTools();
 
 // Bearer token auth middleware
 function authenticate(req: Request, res: Response, next: NextFunction) {
@@ -1448,12 +1547,12 @@ function authenticate(req: Request, res: Response, next: NextFunction) {
 // Create MCP server
 function createServer(): Server {
   const server = new Server(
-    { name: "machina", version: "1.5.0" },
+    { name: "machina", version: VERSION },
     { capabilities: { tools: { listChanged: false } } },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    console.log("Listing tools (progressive disclosure: 1 gateway tool)");
+    console.log(`Listing ${tools.length} service tools (mcp-hubby pattern)`);
     return { tools };
   });
 
@@ -1461,17 +1560,23 @@ function createServer(): Server {
     const { name, arguments: args } = request.params;
     console.log(`Tool call: ${name}, action: ${args?.action || "none"}`);
 
-    if (name !== "machina") {
+    // Check if this is a valid service
+    const service = services.find((s) => s.name === name);
+    if (!service) {
+      const available = services.map((s) => s.name).join(", ");
       return {
         content: [
-          { type: "text", text: `Unknown tool: ${name}. Use 'machina' tool.` },
+          {
+            type: "text",
+            text: `Unknown service: ${name}. Available: ${available}`,
+          },
         ],
         isError: true,
       };
     }
 
     try {
-      const result = await handleMachinaTool(args || {});
+      const result = await handleServiceTool(name, args || {});
       console.log(`Result preview: ${result.slice(0, 100)}...`);
       return {
         content: [{ type: "text", text: result }],
@@ -1494,7 +1599,7 @@ app.use(express.json());
 
 // Health check (no auth required)
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", version: "1.5.0" });
+  res.json({ status: "ok", version: VERSION });
 });
 
 // MCP endpoint - stateless mode (no sessions, JSON responses)
@@ -1524,8 +1629,9 @@ const httpServer = app.listen(PORT, "0.0.0.0", () => {
   console.log(`Machina MCP gateway running on http://0.0.0.0:${PORT}`);
   console.log(`MCP endpoint: POST /mcp`);
   console.log(`Health check: GET /health`);
-  console.log(
-    `\nProgressive disclosure: 1 gateway tool with ${operations.length} operations`,
-  );
-  console.log(`Operations: ${operations.map((o) => o.name).join(", ")}`);
+  console.log(`\n${tools.length} service tools (mcp-hubby pattern):`);
+  for (const service of services) {
+    const ops = getServiceOperations(service);
+    console.log(`  ${service.name}: ${ops.length} operations`);
+  }
 });
