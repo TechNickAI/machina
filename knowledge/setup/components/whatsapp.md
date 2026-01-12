@@ -4,25 +4,45 @@ WhatsApp messaging via the WhatsApp Web protocol using Baileys library.
 
 ## Source
 
-Repository: `jlucaso1/whatsapp-mcp-ts`
-Location: `~/machina/components/whatsapp-mcp-ts`
+- **Upstream library**: `TechNickAI/whatsapp-mcp-ts` (fork of jlucaso1/whatsapp-mcp-ts)
+- **HTTP service**: `machina/services/whatsapp/server.ts`
+- **Deployed to**: `~/machina/components/whatsapp-mcp-ts`
 
 ## Architecture
 
-TypeScript daemon with HTTP API:
+Two-layer design for efficient gateway integration:
 
-1. **Baileys library**: Connects to WhatsApp Web, handles E2E encryption
-2. **SQLite sync**: Messages stored locally for fast queries
-3. **HTTP API**: Send messages via POST to daemon
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Machina Gateway                        │
+│                       (port 9900)                           │
+└─────────────────┬───────────────────────────┬───────────────┘
+                  │ SQLite queries            │ HTTP POST
+                  │ (reads)                   │ (sends)
+                  ▼                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              WhatsApp Service (server.ts)                   │
+│                       (port 9901)                           │
+├─────────────────────────────────────────────────────────────┤
+│  Baileys (WebSocket) ◄──► WhatsApp Web servers              │
+│  SQLite sync         ──► data/whatsapp.db                   │
+└─────────────────────────────────────────────────────────────┘
+```
 
-The daemon runs on **port 9901**.
+**Why this design:**
+
+- **Reads via SQLite**: Fast, no network round-trip, works even if WhatsApp connection hiccups
+- **Sends via HTTP**: Requires live WebSocket connection that only the service maintains
+- **Separation of concerns**: Gateway handles MCP protocol, service handles WhatsApp protocol
+
+The service runs on **port 9901**.
 
 ## Installation
 
 ```bash
 # Clone repository
 cd ~/src
-git clone https://github.com/jlucaso1/whatsapp-mcp-ts.git
+git clone https://github.com/TechNickAI/whatsapp-mcp-ts.git
 
 # Create symlink in machina components
 mkdir -p ~/machina/components
@@ -31,19 +51,22 @@ ln -sf ~/src/whatsapp-mcp-ts ~/machina/components/whatsapp-mcp-ts
 # Install dependencies
 cd ~/machina/components/whatsapp-mcp-ts
 npm install
+
+# Deploy the HTTP service wrapper from machina
+cp ~/src/machina/services/whatsapp/server.ts ~/machina/components/whatsapp-mcp-ts/src/server.ts
 ```
 
 ## First-Time Authentication
 
 WhatsApp requires QR code authentication:
 
-1. Start the daemon manually: `node src/daemon.ts`
+1. Start the service manually: `cd ~/machina/components/whatsapp-mcp-ts && node src/server.ts`
 2. A browser window opens with QR code
 3. On phone: WhatsApp → Settings → Linked Devices → Link a Device → Scan QR
-4. Daemon connects and starts syncing messages
+4. Service connects and starts syncing messages
 5. Session saved to `auth_info_baileys/` directory
 
-**Important**: The daemon must stay running for real-time message sync.
+**Important**: The service must stay running for real-time message sync.
 
 ## Session Persistence
 
@@ -66,7 +89,7 @@ Create `~/Library/LaunchAgents/com.machina.whatsapp.plist`:
     <key>ProgramArguments</key>
     <array>
         <string>/path/to/node</string>
-        <string>src/daemon.ts</string>
+        <string>src/server.ts</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/Users/YOUR_USER/machina/components/whatsapp-mcp-ts</string>
@@ -120,7 +143,7 @@ SQLite at `data/whatsapp.db`:
 
 ### QR code not appearing
 
-Try running in terminal: `node src/daemon.ts`
+Try running in terminal: `cd ~/machina/components/whatsapp-mcp-ts && node src/server.ts`
 Baileys opens a browser window for QR code.
 
 ### Session expired

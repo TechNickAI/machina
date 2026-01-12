@@ -30,7 +30,7 @@ Check service health:
 # Gateway health
 curl -s http://localhost:9900/health
 
-# WhatsApp daemon health
+# WhatsApp service health
 curl -s http://localhost:9901/health
 ```
 
@@ -44,7 +44,7 @@ Verify macOS and required tools:
 # Check for Bun
 which bun || curl -fsSL https://bun.sh/install | bash
 
-# Check for Node (needed for WhatsApp daemon)
+# Check for Node (needed for WhatsApp service)
 which node || echo "Install Node.js via nvm or brew"
 
 # Create directories
@@ -68,7 +68,7 @@ cd ~/src
 git clone https://github.com/your-org/machina.git 2>/dev/null || true
 
 # Clone WhatsApp MCP (if WhatsApp selected)
-git clone https://github.com/jlucaso1/whatsapp-mcp-ts.git 2>/dev/null || true
+git clone https://github.com/TechNickAI/whatsapp-mcp-ts.git 2>/dev/null || true
 
 # Create symlinks
 ln -sf ~/src/machina ~/machina/machina
@@ -81,158 +81,25 @@ ln -sf ~/src/whatsapp-mcp-ts ~/machina/components/whatsapp-mcp-ts
 # Machina gateway
 cd ~/src/machina && bun install
 
-# WhatsApp daemon (if selected)
+# WhatsApp service (if selected)
 cd ~/machina/components/whatsapp-mcp-ts && npm install
 ```
 
-#### Step 5: Create WhatsApp Daemon
+#### Step 5: Deploy WhatsApp Service
 
-The upstream whatsapp-mcp-ts uses stdio MCP. We need a daemon with HTTP API.
+The upstream whatsapp-mcp-ts uses stdio MCP. We need an HTTP service wrapper.
 
-Create `~/machina/components/whatsapp-mcp-ts/src/daemon.ts`:
+Deploy the service from machina/services/:
 
-```typescript
-/**
- * WhatsApp Daemon Mode
- *
- * Runs WhatsApp connection as a background service with HTTP API.
- * - Maintains WhatsApp connection
- * - Syncs messages to SQLite
- * - Exposes HTTP API on port 9901 for sends
- */
-
-import {
-  createServer,
-  type IncomingMessage,
-  type ServerResponse,
-} from "node:http";
-import { pino } from "pino";
-import { initializeDatabase } from "./database.ts";
-import {
-  startWhatsAppConnection,
-  sendWhatsAppMessage,
-  type WhatsAppSocket,
-} from "./whatsapp.ts";
-
-const PORT = parseInt(process.env.WHATSAPP_PORT || "9901", 10);
-const dataDir = process.env.WHATSAPP_MCP_DATA_DIR || ".";
-
-const logger = pino(
-  {
-    level: process.env.LOG_LEVEL || "info",
-    timestamp: pino.stdTimeFunctions.isoTime,
-  },
-  pino.destination(`${dataDir}/whatsapp-daemon.log`),
-);
-
-let whatsappSocket: WhatsAppSocket | null = null;
-
-async function parseJsonBody(req: IncomingMessage): Promise<any> {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => {
-      try {
-        resolve(body ? JSON.parse(body) : {});
-      } catch (e) {
-        reject(e);
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
-function sendJson(res: ServerResponse, status: number, data: any) {
-  res.writeHead(status, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(data));
-}
-
-async function handleRequest(req: IncomingMessage, res: ServerResponse) {
-  const url = req.url || "/";
-  const method = req.method || "GET";
-
-  if (url === "/health" && method === "GET") {
-    const connected = whatsappSocket?.user != null;
-    sendJson(res, connected ? 200 : 503, {
-      status: connected ? "connected" : "disconnected",
-      user: whatsappSocket?.user?.name || null,
-    });
-    return;
-  }
-
-  if (url === "/api/send" && method === "POST") {
-    try {
-      const body = await parseJsonBody(req);
-      const { recipient, message } = body;
-
-      if (!recipient || !message) {
-        sendJson(res, 400, {
-          success: false,
-          error: "Missing recipient or message",
-        });
-        return;
-      }
-
-      if (!whatsappSocket || !whatsappSocket.user) {
-        sendJson(res, 503, { success: false, error: "WhatsApp not connected" });
-        return;
-      }
-
-      const result = await sendWhatsAppMessage(
-        logger,
-        whatsappSocket,
-        recipient,
-        message,
-      );
-
-      if (result && result.key?.id) {
-        sendJson(res, 200, {
-          success: true,
-          message_id: result.key.id,
-          recipient,
-        });
-      } else {
-        sendJson(res, 500, { success: false, error: "Failed to send message" });
-      }
-    } catch (error: any) {
-      logger.error({ err: error }, "Error handling /api/send");
-      sendJson(res, 500, { success: false, error: error.message });
-    }
-    return;
-  }
-
-  sendJson(res, 404, { error: "Not found" });
-}
-
-async function main() {
-  logger.info("Starting WhatsApp Daemon...");
-  try {
-    initializeDatabase();
-    whatsappSocket = await startWhatsAppConnection(logger);
-  } catch (error: any) {
-    logger.fatal({ err: error }, "Failed to initialize");
-    process.exit(1);
-  }
-
-  const server = createServer(handleRequest);
-  server.listen(PORT, () => {
-    logger.info(`HTTP API listening on port ${PORT}`);
-    console.log(`WhatsApp daemon running on port ${PORT}`);
-  });
-}
-
-process.on("SIGINT", () => {
-  process.exit(0);
-});
-process.on("SIGTERM", () => {
-  process.exit(0);
-});
-
-main().catch((error) => {
-  logger.fatal({ err: error }, "Unhandled error");
-  process.exit(1);
-});
+```bash
+# Copy the WhatsApp HTTP service wrapper
+cp ~/src/machina/services/whatsapp/server.ts ~/machina/components/whatsapp-mcp-ts/src/server.ts
 ```
+
+The service provides:
+
+- `/health` - Connection status check
+- `/api/send` - Send messages via POST
 
 #### Step 6: Generate Auth Token
 
@@ -249,12 +116,12 @@ echo "Token generated: $MACHINA_TOKEN"
 
 ```bash
 cd ~/machina/components/whatsapp-mcp-ts
-node src/daemon.ts
+node src/server.ts
 ```
 
 1. A browser window opens with QR code
 2. On phone: WhatsApp → Settings → Linked Devices → Link a Device → Scan QR
-3. Wait for "WhatsApp daemon running on port 9901" message
+3. Wait for "WhatsApp service running on port 9901" message
 4. Ctrl+C to stop (LaunchD will manage it)
 
 Verify authentication worked:
@@ -313,7 +180,7 @@ ls ~/machina/components/whatsapp-mcp-ts/auth_info/creds.json
     <key>ProgramArguments</key>
     <array>
         <string>NODE_PATH/node</string>
-        <string>src/daemon.ts</string>
+        <string>src/server.ts</string>
     </array>
     <key>WorkingDirectory</key>
     <string>USER_HOME/machina/components/whatsapp-mcp-ts</string>
@@ -440,7 +307,7 @@ Session may have expired. Re-authenticate:
 ```bash
 launchctl unload ~/Library/LaunchAgents/com.machina.whatsapp.plist
 rm -rf ~/machina/components/whatsapp-mcp-ts/auth_info
-cd ~/machina/components/whatsapp-mcp-ts && node src/daemon.ts
+cd ~/machina/components/whatsapp-mcp-ts && node src/server.ts
 # Scan QR code, then Ctrl+C
 launchctl load ~/Library/LaunchAgents/com.machina.whatsapp.plist
 ```
