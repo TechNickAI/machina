@@ -307,31 +307,41 @@ curl -s -X POST 'http://localhost:9900/mcp' \
 - WhatsApp DB: Returns status (should work immediately)
 - Messages DB: Returns recent message OR "unable to open database file" (needs FDA - see Step 9)
 
-#### Step 11: Configure Tailscale Serve
+#### Step 11: Configure Tailscale Funnel
 
-Check if Tailscale serve is already configured for port 9900:
-
-```bash
-# Check current serve status
-tailscale serve status 2>&1
-```
-
-**If output shows `proxy http://127.0.0.1:9900`** → Already configured, skip to Step 12.
-
-**If output shows nothing or a different port** → Configure it:
+Check if Tailscale funnel is already configured for port 9900:
 
 ```bash
-# Enable HTTPS proxy (proxies port 443 → 9900)
-tailscale serve https:443 / http://127.0.0.1:9900
-
-# Verify it's serving
-tailscale serve status
+# Check current funnel status
+tailscale funnel status 2>&1
 ```
+
+**If output shows `Funnel on` with `proxy http://127.0.0.1:9900`** → Already configured, skip to Step 12.
+
+**If output shows nothing or different configuration** → Configure it:
+
+```bash
+# Enable HTTPS funnel (provides proper TLS and public access)
+tailscale funnel --bg --https 443 http://127.0.0.1:9900
+
+# Verify funnel is active
+tailscale funnel status
+```
+
+**Important**: Tailscale funnel (not serve) is required for proper HTTPS/TLS certificates. The `serve` command creates tailnet-only endpoints with TLS handshake errors.
 
 Get the hostname:
 
 ```bash
 tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//'
+```
+
+**Testing**: MagicDNS hostname resolution doesn't work from the local Mac. Test the endpoint from a remote device (laptop, phone) on your Tailscale network:
+
+```bash
+# From remote device:
+curl -s https://your-mac.tailnet.ts.net/health
+# Expected: {"status":"ok","version":"1.5.0"}
 ```
 
 #### Step 12: Provide MCP Configuration
@@ -499,23 +509,41 @@ When the user asks for the MCP config (e.g., "give me the MCP config", "MCP conf
 cat ~/machina/config/.env | grep MACHINA_TOKEN | cut -d= -f2
 ```
 
-### 2. Check and configure Tailscale serve
+### 2. Check and configure Tailscale funnel
 
 ```bash
-tailscale serve status 2>&1
+tailscale funnel status 2>&1
 ```
 
-**If output does NOT show `proxy http://127.0.0.1:9900`**, configure it:
+**If output does NOT show `Funnel on` with `proxy http://127.0.0.1:9900`**, configure it:
 
 ```bash
-tailscale serve https:443 / http://127.0.0.1:9900
+# Enable funnel (NOT serve - funnel provides proper TLS)
+tailscale funnel --bg --https 443 http://127.0.0.1:9900
+
+# Verify
+tailscale funnel status
 ```
+
+**Note**: Use `funnel` not `serve`. Funnel provides proper HTTPS/TLS certificates required for remote MCP access.
 
 ### 3. Get Tailscale hostname
 
 ```bash
 tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//'
 ```
+
+### 3a. Verify remote access (IMPORTANT)
+
+Test from a different machine (laptop, phone) on Tailscale:
+
+```bash
+# From remote device:
+curl -s https://YOUR-MAC.tailnet.ts.net/health
+# Expected: {"status":"ok","version":"1.5.0"}
+```
+
+**If this fails**, funnel is not properly configured. DNS resolution doesn't work from the local Mac - you must test from a remote device.
 
 ### 4. Output the config
 
