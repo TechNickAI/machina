@@ -587,8 +587,13 @@ function escapeAppleScript(str: string): string {
 }
 
 // Escape string for SQL LIKE patterns (prevents SQL injection)
+// Escapes: ' (quotes), % and _ (LIKE wildcards), \ (escape character)
 function escapeSQL(str: string): string {
-  return str.replace(/'/g, "''").replace(/%/g, "\\%").replace(/_/g, "\\_");
+  return str
+    .replace(/\\/g, "\\\\") // Backslash first to avoid double-escaping
+    .replace(/'/g, "''")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_");
 }
 
 // Ensure an app is running before AppleScript can talk to it
@@ -624,15 +629,16 @@ async function runAppleScript(
 
 // SQLite query helper for Messages
 async function queryMessagesDB(sql: string): Promise<string> {
+  const dbPath = `${process.env.HOME}/Library/Messages/chat.db`;
+  const db = new Database(dbPath, { readonly: true });
   try {
-    const dbPath = `${process.env.HOME}/Library/Messages/chat.db`;
-    const db = new Database(dbPath, { readonly: true });
     const rows = db.prepare(sql).all();
-    db.close();
     // Return formatted output similar to sqlite3 CLI
     return rows.map((row) => Object.values(row).join("|")).join("\n");
   } catch (error: any) {
     throw new Error(`Messages database error: ${error.message}`);
+  } finally {
+    db.close();
   }
 }
 
@@ -642,14 +648,15 @@ const WHATSAPP_API_URL = "http://localhost:9901";
 
 // SQLite query helper for WhatsApp
 async function queryWhatsAppDB(sql: string): Promise<any[]> {
+  // Open database in read-only mode for security
+  const db = new Database(WHATSAPP_DB_PATH, { readonly: true });
   try {
-    // Open database in read-only mode for security
-    const db = new Database(WHATSAPP_DB_PATH, { readonly: true });
     const rows = db.prepare(sql).all();
-    db.close();
     return rows;
   } catch (error: any) {
     throw new Error(`WhatsApp database error: ${error.message}`);
+  } finally {
+    db.close();
   }
 }
 

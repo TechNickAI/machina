@@ -135,9 +135,10 @@ async function main() {
   }
 
   const server = createServer(handleRequest);
-  server.listen(PORT, () => {
-    logger.info(`HTTP API listening on port ${PORT}`);
-    console.log(`WhatsApp service running on port ${PORT}`);
+  // Bind to localhost only - gateway handles external access with auth
+  server.listen(PORT, "127.0.0.1", () => {
+    logger.info(`HTTP API listening on 127.0.0.1:${PORT}`);
+    console.log(`WhatsApp service running on 127.0.0.1:${PORT}`);
   });
 }
 
