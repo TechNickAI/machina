@@ -41,16 +41,18 @@ curl -s http://localhost:9901/health
 Verify macOS and required tools:
 
 ```bash
-# Check for Bun
-which bun || curl -fsSL https://bun.sh/install | bash
+# Check for Node.js (v22+ required for TypeScript support)
+node --version || echo "Install Node.js v22+ via nvm or brew"
 
-# Check for Node (needed for WhatsApp service)
-which node || echo "Install Node.js via nvm or brew"
+# Check for tsx (TypeScript executor)
+which tsx || npm install -g tsx
 
 # Create directories
 mkdir -p ~/machina/{config,components,logs}
 mkdir -p ~/src
 ```
+
+**Note:** The gateway uses Node.js with tsx (not Bun) because better-sqlite3 is required for Messages/WhatsApp database access, and Bun doesn't support native Node.js addons.
 
 #### Step 2: Ask User Preferences
 
@@ -79,7 +81,7 @@ ln -sf ~/src/whatsapp-mcp-ts ~/machina/components/whatsapp-mcp-ts
 
 ```bash
 # Machina gateway
-cd ~/src/machina && bun install
+cd ~/src/machina && npm install
 
 # WhatsApp service (if selected)
 cd ~/machina/components/whatsapp-mcp-ts && npm install
@@ -143,14 +145,15 @@ ls ~/machina/components/whatsapp-mcp-ts/auth_info/creds.json
     <string>com.machina.gateway</string>
     <key>ProgramArguments</key>
     <array>
-        <string>NODE_PATH/bun</string>
-        <string>run</string>
+        <string>NODE_BIN_PATH/tsx</string>
         <string>server/index.ts</string>
     </array>
     <key>WorkingDirectory</key>
     <string>USER_HOME/src/machina</string>
     <key>EnvironmentVariables</key>
     <dict>
+        <key>PATH</key>
+        <string>NODE_BIN_PATH:/usr/bin:/bin</string>
         <key>MACHINA_PORT</key>
         <string>9900</string>
         <key>MACHINA_TOKEN</key>
@@ -168,6 +171,8 @@ ls ~/machina/components/whatsapp-mcp-ts/auth_info/creds.json
 </plist>
 ```
 
+**Important:** `NODE_BIN_PATH` is the directory containing node/tsx (e.g., `~/.nvm/versions/node/v24.12.0/bin`). The PATH environment variable is required because tsx needs to find the `node` binary.
+
 **WhatsApp plist** (`~/Library/LaunchAgents/com.machina.whatsapp.plist`):
 
 ```xml
@@ -179,7 +184,7 @@ ls ~/machina/components/whatsapp-mcp-ts/auth_info/creds.json
     <string>com.machina.whatsapp</string>
     <key>ProgramArguments</key>
     <array>
-        <string>NODE_PATH/node</string>
+        <string>NODE_BIN_PATH/node</string>
         <string>src/server.ts</string>
     </array>
     <key>WorkingDirectory</key>
@@ -203,7 +208,11 @@ ls ~/machina/components/whatsapp-mcp-ts/auth_info/creds.json
 </plist>
 ```
 
-Replace `USER_HOME`, `NODE_PATH`, and `TOKEN_VALUE` with actual values.
+Replace placeholders with actual values:
+
+- `USER_HOME` → Your home directory (e.g., `/Users/nick`)
+- `NODE_BIN_PATH` → Node.js bin directory (e.g., `/Users/nick/.nvm/versions/node/v24.12.0/bin`)
+- `TOKEN_VALUE` → The generated MACHINA_TOKEN
 
 Load services:
 
@@ -212,24 +221,93 @@ launchctl load ~/Library/LaunchAgents/com.machina.gateway.plist
 launchctl load ~/Library/LaunchAgents/com.machina.whatsapp.plist
 ```
 
-#### Step 9: Verify Everything Works
+#### Step 9: Grant Full Disk Access (Required for Messages)
+
+The Messages database (`~/Library/Messages/chat.db`) is protected by macOS. The Node.js binary needs Full Disk Access to read it.
+
+**Check if FDA is needed:**
 
 ```bash
-# Gateway health
-curl -s http://localhost:9900/health
-
-# WhatsApp health
-curl -s http://localhost:9901/health
-
-# Test gateway operation
-curl -s -X POST http://localhost:9900/mcp \
+# Test Messages access via the gateway
+curl -s -X POST 'http://localhost:9900/mcp' \
   -H "Authorization: Bearer $MACHINA_TOKEN" \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"machina","arguments":{"action":"describe"}},"id":1}'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"machina","arguments":{"action":"messages_recent","params":{"limit":1}}},"id":1}'
 ```
 
-#### Step 10: Provide MCP Configuration
+If you see `"unable to open database file"`, FDA is needed.
+
+**Grant FDA (interactive):**
+
+Run these commands to open System Settings and copy the node path to clipboard:
+
+```bash
+# Open FDA settings
+open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+
+# Copy node path to clipboard (adjust path if different)
+echo -n "$(dirname $(which node))/node" | pbcopy
+echo "Node path copied to clipboard!"
+```
+
+Then in System Settings:
+
+1. Click the **+** button under Full Disk Access
+2. Press `Cmd+Shift+G` to open "Go to folder"
+3. Press `Cmd+V` to paste the path from clipboard
+4. Click "Open"
+
+Finally, restart the gateway:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.machina.gateway
+```
+
+**Note:** WhatsApp database access does NOT require FDA (it's stored in `~/machina/` which is user-accessible).
+
+#### Step 10: Verify Everything Works
+
+Run comprehensive verification:
+
+```bash
+# 1. Service health
+echo "=== Service Health ==="
+curl -s http://localhost:9900/health && echo ""
+curl -s http://localhost:9901/health && echo ""
+
+# 2. Gateway responds to MCP
+echo -e "\n=== Gateway MCP ==="
+curl -s -X POST 'http://localhost:9900/mcp' \
+  -H "Authorization: Bearer $MACHINA_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"machina","arguments":{"action":"system_status"}},"id":1}'
+
+# 3. WhatsApp database (no FDA needed)
+echo -e "\n\n=== WhatsApp DB ==="
+curl -s -X POST 'http://localhost:9900/mcp' \
+  -H "Authorization: Bearer $MACHINA_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"machina","arguments":{"action":"whatsapp_status"}},"id":2}'
+
+# 4. Messages database (FDA required)
+echo -e "\n\n=== Messages DB (requires FDA) ==="
+curl -s -X POST 'http://localhost:9900/mcp' \
+  -H "Authorization: Bearer $MACHINA_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"machina","arguments":{"action":"messages_recent","params":{"limit":1}}},"id":3}'
+```
+
+**Expected results:**
+
+- Service health: Both return `{"status":"ok",...}`
+- WhatsApp DB: Returns status (should work immediately)
+- Messages DB: Returns recent message OR "unable to open database file" (needs FDA - see Step 9)
+
+#### Step 11: Provide MCP Configuration
 
 Give user the MCP config for their AI client:
 
@@ -253,7 +331,7 @@ For remote access via Tailscale, replace `localhost:9900` with `your-mac.tailnet
 1. Check for updates: `cd ~/src/machina && git fetch`
 2. If updates available:
    - `git pull`
-   - `bun install`
+   - `npm install`
    - Restart services: `launchctl kickstart -k gui/$(id -u)/com.machina.gateway`
 3. Check WhatsApp updates: `cd ~/machina/components/whatsapp-mcp-ts && git pull && npm install`
 4. Restart WhatsApp: `launchctl kickstart -k gui/$(id -u)/com.machina.whatsapp`
@@ -324,6 +402,39 @@ Check logs:
 tail -50 ~/machina/logs/gateway-stderr.log
 tail -50 ~/machina/logs/whatsapp-stderr.log
 ```
+
+### Messages returns "unable to open database file"
+
+This means the Node.js binary doesn't have Full Disk Access. The Messages database is protected by macOS.
+
+**Quick fix:**
+
+```bash
+# Open FDA settings and copy node path to clipboard
+open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+echo -n "$(dirname $(which node))/node" | pbcopy && echo "Path copied!"
+```
+
+Then:
+
+1. Click **+** under Full Disk Access
+2. Press `Cmd+Shift+G`, then `Cmd+V` to paste
+3. Click "Open"
+4. Restart gateway: `launchctl kickstart -k gui/$(id -u)/com.machina.gateway`
+
+**Note:** WhatsApp database access does NOT require FDA - if WhatsApp queries fail, it's a different issue.
+
+### better-sqlite3 errors
+
+If you see errors about `better-sqlite3`, the gateway may be running under Bun instead of Node.js. Bun doesn't support native Node.js addons.
+
+Check the plist is using tsx/node:
+
+```bash
+grep -A2 ProgramArguments ~/Library/LaunchAgents/com.machina.gateway.plist
+```
+
+Should show `tsx` or `node`, NOT `bun`.
 
 ## Get MCP Configuration
 

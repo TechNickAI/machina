@@ -1,6 +1,6 @@
 {
   "name": "machina-mcp",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "MCP server exposing Mac capabilities (iMessage, Mail, Calendar, Notes, Reminders, WhatsApp) for AI agents",
   "type": "module",
   "main": "server/index.ts",
@@ -8,9 +8,9 @@
     "machina-mcp": "server/index.ts"
   },
   "scripts": {
-    "start": "bun run server/index.ts",
-    "dev": "bun --watch server/index.ts",
-    "permissions": "bun run server/trigger-permissions.ts"
+    "start": "tsx server/index.ts",
+    "dev": "tsx --watch server/index.ts",
+    "permissions": "tsx server/trigger-permissions.ts"
   },
   "keywords": [
     "mcp",
@@ -29,7 +29,7 @@
     "url": "https://github.com/TechNickAI/machina"
   },
   "engines": {
-    "bun": ">=1.0.0"
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -38,6 +38,7 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13"
+    "@types/better-sqlite3": "^7.6.13",
+    "tsx": "^4.21.0"
   }
 }
