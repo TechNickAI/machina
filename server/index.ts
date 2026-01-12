@@ -803,22 +803,38 @@ async function executeOperation(
     // ============== NOTES ==============
     case "notes_list": {
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const folderFilter = params.folder
-        ? `of folder "${escapeAppleScript(params.folder)}"`
-        : "";
-      const script = `tell application "Notes"
-        set noteList to {}
-        set allNotes to notes ${folderFilter}
-        set noteCount to count of allNotes
-        if noteCount > ${limit} then set noteCount to ${limit}
-        repeat with i from 1 to noteCount
-          set n to item i of allNotes
-          set noteTitle to name of n
-          set noteFolder to name of container of n
-          set end of noteList to noteFolder & ": " & noteTitle
-        end repeat
-        return noteList as text
-      end tell`;
+      let script: string;
+      if (params.folder) {
+        const escapedFolder = escapeAppleScript(params.folder);
+        script = `tell application "Notes"
+          set noteList to {}
+          set targetFolder to folder "${escapedFolder}"
+          set folderName to name of targetFolder
+          set allNotes to notes of targetFolder
+          set noteCount to count of allNotes
+          if noteCount > ${limit} then set noteCount to ${limit}
+          repeat with i from 1 to noteCount
+            set n to item i of allNotes
+            set end of noteList to folderName & ": " & name of n
+          end repeat
+          return noteList as text
+        end tell`;
+      } else {
+        script = `tell application "Notes"
+          set noteList to {}
+          set noteCount to 0
+          repeat with f in folders
+            if noteCount >= ${limit} then exit repeat
+            set folderName to name of f
+            repeat with n in notes of f
+              if noteCount >= ${limit} then exit repeat
+              set end of noteList to folderName & ": " & name of n
+              set noteCount to noteCount + 1
+            end repeat
+          end repeat
+          return noteList as text
+        end tell`;
+      }
       return await runAppleScript(script, "Notes");
     }
 
@@ -856,15 +872,17 @@ async function executeOperation(
       const limit = Math.min(Math.max(1, params.limit || 10), 100);
       const escapedQuery = escapeAppleScript(params.query);
       const script = `tell application "Notes"
-        set matchingNotes to (notes whose name contains "${escapedQuery}" or plaintext contains "${escapedQuery}")
         set noteList to {}
-        set noteCount to count of matchingNotes
-        if noteCount > ${limit} then set noteCount to ${limit}
-        repeat with i from 1 to noteCount
-          set n to item i of matchingNotes
-          set noteTitle to name of n
-          set noteFolder to name of container of n
-          set end of noteList to noteFolder & ": " & noteTitle
+        set noteCount to 0
+        repeat with f in folders
+          if noteCount >= ${limit} then exit repeat
+          set folderName to name of f
+          set matchingNotes to (notes of f whose name contains "${escapedQuery}" or plaintext contains "${escapedQuery}")
+          repeat with n in matchingNotes
+            if noteCount >= ${limit} then exit repeat
+            set end of noteList to folderName & ": " & name of n
+            set noteCount to noteCount + 1
+          end repeat
         end repeat
         return noteList as text
       end tell`;
