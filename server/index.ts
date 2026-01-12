@@ -630,15 +630,16 @@ async function runAppleScript(
 // SQLite query helper for Messages
 async function queryMessagesDB(sql: string): Promise<string> {
   const dbPath = `${process.env.HOME}/Library/Messages/chat.db`;
-  const db = new Database(dbPath, { readonly: true });
+  let db;
   try {
+    db = new Database(dbPath, { readonly: true });
     const rows = db.prepare(sql).all();
     // Return formatted output similar to sqlite3 CLI
     return rows.map((row) => Object.values(row).join("|")).join("\n");
   } catch (error: any) {
     throw new Error(`Messages database error: ${error.message}`);
   } finally {
-    db.close();
+    if (db) db.close();
   }
 }
 
@@ -648,15 +649,16 @@ const WHATSAPP_API_URL = "http://localhost:9901";
 
 // SQLite query helper for WhatsApp
 async function queryWhatsAppDB(sql: string): Promise<any[]> {
-  // Open database in read-only mode for security
-  const db = new Database(WHATSAPP_DB_PATH, { readonly: true });
+  let db;
   try {
+    // Open database in read-only mode for security
+    db = new Database(WHATSAPP_DB_PATH, { readonly: true });
     const rows = db.prepare(sql).all();
     return rows;
   } catch (error: any) {
     throw new Error(`WhatsApp database error: ${error.message}`);
   } finally {
-    db.close();
+    if (db) db.close();
   }
 }
 
