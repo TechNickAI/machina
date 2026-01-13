@@ -1096,10 +1096,13 @@ async function buildContactCache(): Promise<Map<string, string>> {
   const addressBookDir = `${process.env.HOME}/Library/Application Support/AddressBook/Sources`;
 
   try {
-    // Find all source databases
-    const { stdout: sources } = await execAsync(
-      `ls -d "${addressBookDir}"/*/ 2>/dev/null || true`,
-    );
+    // Find all source databases with timeout to prevent blocking
+    const { stdout: sources } = await Promise.race([
+      execAsync(`ls -d "${addressBookDir}"/*/ 2>/dev/null || true`),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("AddressBook access timeout")), 5000),
+      ),
+    ]);
 
     for (const sourceDir of sources.trim().split("\n").filter(Boolean)) {
       const dbPath = `${sourceDir}AddressBook-v22.abcddb`;
