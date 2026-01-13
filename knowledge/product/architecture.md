@@ -159,10 +159,10 @@ macOS native service manager. Each service gets a plist:
 1. Cloud AI sends MCP request:
 
    ```json
-   { "action": "messages_send", "params": { "to": "Mom", "body": "Hi!" } }
+   { "action": "messages.send", "params": { "to": "Mom", "body": "Hi!" } }
    ```
 
-2. Gateway validates token, routes to messages_send handler
+2. Gateway validates token, converts dot notation to internal operation name
 
 3. Handler resolves "Mom" via Contacts AppleScript
 
