@@ -1436,32 +1436,28 @@ async function executeOperation(
 
     case "messages_conversations": {
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
+      // Get most recent message per handle using subquery for correct last_message
       const sql = `SELECT
-        c.display_name as name,
         h.id as participant,
-        (SELECT text FROM message WHERE cache_roomnames = c.room_name OR handle_id = h.ROWID ORDER BY date DESC LIMIT 1) as last_message,
-        datetime((SELECT date/1000000000 + 978307200 FROM message WHERE cache_roomnames = c.room_name OR handle_id = h.ROWID ORDER BY date DESC LIMIT 1), 'unixepoch', 'localtime') as last_date
-        FROM chat c
-        LEFT JOIN chat_handle_join chj ON c.ROWID = chj.chat_id
-        LEFT JOIN handle h ON chj.handle_id = h.ROWID
-        GROUP BY c.ROWID
-        ORDER BY last_date DESC
-        LIMIT ${limit}`;
+        m.text as last_message,
+        datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as last_date
+      FROM message m
+      JOIN handle h ON m.handle_id = h.ROWID
+      WHERE m.text IS NOT NULL AND m.text <> ''
+        AND m.date = (
+          SELECT MAX(m2.date) FROM message m2
+          WHERE m2.handle_id = m.handle_id AND m2.text IS NOT NULL AND m2.text <> ''
+        )
+      ORDER BY m.date DESC
+      LIMIT ${limit}`;
       const rows = queryMessagesDBRows(sql);
       if (rows.length === 0) return "No conversations found";
 
-      // Resolve participant phone numbers to names
-      const participants = [
-        ...new Set(rows.map((r: any) => r.participant).filter(Boolean)),
-      ];
-      const nameMap = await resolveHandlesToNames(participants);
-
+      // Skip contact resolution for now (requires Full Disk Access for AddressBook)
+      // Just return raw phone numbers
       return rows
         .map((r: any) => {
-          // Use display_name if available, otherwise resolved contact name, otherwise raw participant
-          const displayName =
-            r.name || nameMap.get(r.participant) || r.participant;
-          return `${displayName}|${r.last_date || ""}|${r.last_message || ""}`;
+          return `${r.participant || "Unknown"}|${r.last_date || ""}|${r.last_message || ""}`;
         })
         .join("\n");
     }
@@ -1595,8 +1591,8 @@ async function executeOperation(
 
       const recent = queryMessagesDBRows(recentSql)[0];
 
-      // Look up contact name
-      const contactName = await lookupContact(handleId);
+      // Look up contact name using cached SQLite data (fast)
+      const contactName = await resolveHandleToName(handleId);
 
       // Get attachment details for messages that have them
       const attachmentIds = messages
