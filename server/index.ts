@@ -881,9 +881,18 @@ async function lookupContact(identifier: string): Promise<string | null> {
     // Look up by email
     const escapedEmail = escapeAppleScript(identifier);
     const script = `tell application "Contacts"
-      set matchingPeople to (every person whose emails contains "${escapedEmail}")
+      set matchingPeople to {}
+      repeat with p in people
+        repeat with em in emails of p
+          if value of em is "${escapedEmail}" then
+            set end of matchingPeople to name of p
+            exit repeat
+          end if
+        end repeat
+        if (count of matchingPeople) > 0 then exit repeat
+      end repeat
       if (count of matchingPeople) > 0 then
-        return name of item 1 of matchingPeople
+        return item 1 of matchingPeople
       else
         return ""
       end if
