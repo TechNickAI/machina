@@ -3002,10 +3002,14 @@ async function handleGatewayTool(args: Record<string, any>): Promise<string> {
     // Maybe just a service name? Show helpful error
     const service = services.find((s) => s.name === action);
     if (service) {
-      return `To use ${service.displayName}, specify an operation:\n\n${describeService(service)}`;
+      throw new Error(
+        `To use ${service.displayName}, specify an operation:\n\n${describeService(service)}`
+      );
     }
     const available = services.map((s) => s.name).join(", ");
-    return `Unknown action: ${action}\n\nExpected format: service.operation (e.g., whatsapp.chats)\nAvailable services: ${available}\nUse action='describe' to see all operations.`;
+    throw new Error(
+      `Unknown action: ${action}\n\nExpected format: service.operation (e.g., whatsapp.chats)\nAvailable services: ${available}\nUse action='describe' to see all operations.`
+    );
   }
 
   // Execute the operation
