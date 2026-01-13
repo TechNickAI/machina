@@ -1240,13 +1240,15 @@ async function formatMessagesWithNames(
     textField = "text",
   } = options;
 
-  // Collect unique handles and convert JIDs to phone numbers if needed
+  // Collect unique handles and convert WhatsApp JIDs to phone numbers if needed
   const handleToPhone = new Map<string, string>();
   for (const r of rows) {
     const rawHandle = (r as any)[handleField] as string | undefined;
     if (rawHandle && !r.is_from_me) {
-      // If it's a JID, extract the phone number
-      const phone = rawHandle.includes("@")
+      // WhatsApp JIDs are digits@domain (e.g., 15551234567@s.whatsapp.net)
+      // iMessage emails are regular emails (e.g., user@example.com)
+      // Extract phone from WhatsApp JID, otherwise use handle as-is (including emails)
+      const phone = rawHandle.match(/^\d+@/)
         ? phoneFromJid(rawHandle)
         : rawHandle;
       if (phone) {
