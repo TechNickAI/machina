@@ -35,6 +35,7 @@ const PORT = parseInt(process.env.MACHINA_PORT || "9900", 10);
 
 // AppleScript timeout configuration (ms)
 const APPLESCRIPT_TIMEOUT = 10_000; // 10s for normal operations
+const REMINDERS_TIMEOUT = 45_000; // 45s for Reminders (iCloud sync is slow)
 const PERMISSION_CHECK_TIMEOUT = 3_000; // 3s for permission checks
 
 // Permission cache: tracks which apps have been verified this session
@@ -1868,7 +1869,7 @@ async function executeOperation(
           return reminderList as text
         end tell`;
       }
-      return await runAppleScript(script, "Reminders");
+      return await runAppleScript(script, "Reminders", REMINDERS_TIMEOUT);
     }
 
     case "reminders_create": {
@@ -1896,7 +1897,7 @@ async function executeOperation(
         end tell
         return "Created reminder: ${escapedTitle}"
       end tell`;
-      return await runAppleScript(script, "Reminders");
+      return await runAppleScript(script, "Reminders", REMINDERS_TIMEOUT);
     }
 
     case "reminders_complete": {
@@ -1914,7 +1915,7 @@ async function executeOperation(
         set completed of targetReminder to true
         return "Completed: " & name of targetReminder
       end tell`;
-      return await runAppleScript(script, "Reminders");
+      return await runAppleScript(script, "Reminders", REMINDERS_TIMEOUT);
     }
 
     // ============== CONTACTS ==============
