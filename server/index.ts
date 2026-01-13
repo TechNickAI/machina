@@ -644,7 +644,7 @@ const operations: Operation[] = [
 ];
 
 // ============================================================================
-// SERVICE DEFINITIONS (mcp-hubby pattern: one tool per service)
+// SERVICE DEFINITIONS (single gateway tool pattern like MCP Hubby)
 // ============================================================================
 
 interface ServiceDef {
@@ -687,8 +687,8 @@ const services: ServiceDef[] = [
     prefix: "contacts_",
   },
   {
-    name: "machina",
-    displayName: "Machina",
+    name: "system",
+    displayName: "System",
     description: "Update Machina server and check status",
     prefix: "system_",
   },
@@ -702,17 +702,67 @@ function stripPrefix(opName: string, prefix: string): string {
   return opName.startsWith(prefix) ? opName.slice(prefix.length) : opName;
 }
 
+// Convert dot-notation ("whatsapp.chats") to internal operation name ("whatsapp_chats")
+function fromDotNotation(dotAction: string): string | null {
+  const dotIndex = dotAction.indexOf(".");
+  if (dotIndex === -1) return null;
+
+  const serviceName = dotAction.slice(0, dotIndex);
+  const opName = dotAction.slice(dotIndex + 1);
+
+  const service = services.find((s) => s.name === serviceName);
+  if (!service) return null;
+
+  return service.prefix + opName;
+}
+
 // Service-specific workflow hints
 const serviceWorkflows: Record<string, string[]> = {
   whatsapp: [
     "\nCommon workflows:",
-    "  • Message someone by name: messages(contact='John') or chat_context(contact='John')",
-    "  • Message by phone: messages(contact='(831) 334-6265')",
-    "  • Find contacts: contacts(query='name') → shows JIDs for messaging",
-    "  • AI analysis: chat_context(contact='John', days=7) → rich conversation context",
+    "  • Message someone by name: whatsapp.messages(contact='John')",
+    "  • Message by phone: whatsapp.messages(contact='(831) 334-6265')",
+    "  • Find contacts: whatsapp.contacts(query='name') → shows JIDs for messaging",
+    "  • AI analysis: whatsapp.chat_context(contact='John', days=7) → rich conversation context",
     "\nFlexible input: Use contact names, phone numbers, or JIDs - all work.",
   ],
 };
+
+// Generate describe output for all services (full gateway describe)
+function describeAllServices(): string {
+  const lines = ["Available operations for Machina:\n"];
+
+  for (const service of services) {
+    const ops = getServiceOperations(service);
+    lines.push(`**${service.displayName}** (${service.name}.*):`);
+
+    for (const op of ops) {
+      const shortName = stripPrefix(op.name, service.prefix);
+      const requiredParams = op.parameters
+        .filter((p) => p.required)
+        .map((p) => p.name)
+        .join(", ");
+      lines.push(
+        `  ${service.name}.${shortName}${requiredParams ? `(${requiredParams})` : ""} - ${op.description.split(".")[0]}`,
+      );
+    }
+
+    // Add service-specific workflow hints
+    const workflows = serviceWorkflows[service.name];
+    if (workflows) {
+      lines.push(...workflows);
+    }
+    lines.push("");
+  }
+
+  lines.push("---");
+  lines.push("Usage: machina(action='service.operation', params={...})");
+  lines.push("Example: machina(action='whatsapp.chats', params={limit: 5})");
+  lines.push(
+    "Tip: action='describe', params={operation: 'service.operation'} for detailed docs",
+  );
+  return lines.join("\n");
+}
 
 // Generate describe output for a specific service
 function describeService(service: ServiceDef): string {
@@ -726,7 +776,7 @@ function describeService(service: ServiceDef): string {
       .map((p) => p.name)
       .join(", ");
     lines.push(
-      `  ${shortName}${requiredParams ? `(${requiredParams})` : ""} - ${op.description.split(".")[0]}`,
+      `  ${service.name}.${shortName}${requiredParams ? `(${requiredParams})` : ""} - ${op.description.split(".")[0]}`,
     );
   }
 
@@ -737,29 +787,43 @@ function describeService(service: ServiceDef): string {
   }
 
   lines.push("\n---");
-  lines.push(`Usage: ${service.name}(action='operation', params={...})`);
+  lines.push(
+    `Usage: machina(action='${service.name}.operation', params={...})`,
+  );
   lines.push(
     "Tip: action='describe', params={operation: 'name'} for detailed docs",
   );
   return lines.join("\n");
 }
 
-function describeOperationForService(
-  service: ServiceDef,
-  shortName: string,
-): string {
-  const fullName = service.prefix + shortName;
-  const op = operations.find((o) => o.name === fullName);
-  if (!op) {
-    const available = getServiceOperations(service)
-      .map((o) => stripPrefix(o.name, service.prefix))
-      .join(", ");
-    return `Unknown operation: ${shortName}\n\nAvailable for ${service.displayName}: ${available}`;
+function describeOperation(dotAction: string): string {
+  // Check if it's a service name (e.g., "whatsapp" → describe whatsapp service)
+  const service = services.find((s) => s.name === dotAction);
+  if (service) {
+    return describeService(service);
   }
 
-  const lines = [
-    `**${stripPrefix(op.name, service.prefix)}**\n${op.description}\n`,
-  ];
+  // Convert dot notation to internal name
+  const internalName = fromDotNotation(dotAction);
+  if (!internalName) {
+    const available = services.map((s) => s.name).join(", ");
+    return `Unknown operation: ${dotAction}\n\nExpected format: service.operation (e.g., whatsapp.chats)\nAvailable services: ${available}\nUse action='describe' to see all operations.`;
+  }
+
+  // Find the operation
+  const op = operations.find((o) => o.name === internalName);
+  if (!op) {
+    const svc = services.find((s) => internalName.startsWith(s.prefix));
+    if (svc) {
+      const available = getServiceOperations(svc)
+        .map((o) => `${svc.name}.${stripPrefix(o.name, svc.prefix)}`)
+        .join(", ");
+      return `Unknown operation: ${dotAction}\n\nAvailable for ${svc.displayName}: ${available}`;
+    }
+    return `Unknown operation: ${dotAction}`;
+  }
+
+  const lines = [`**${dotAction}**\n${op.description}\n`];
 
   if (op.parameters.length > 0) {
     lines.push("Parameters:");
@@ -770,31 +834,34 @@ function describeOperationForService(
   }
 
   lines.push(`\nReturns: ${op.returns}`);
-  lines.push(
-    `\nUsage: ${service.name}(action='${stripPrefix(op.name, service.prefix)}', params={...})`,
-  );
+  lines.push(`\nUsage: machina(action='${dotAction}', params={...})`);
 
   return lines.join("\n");
 }
 
-// Generate MCP tools array (one tool per service)
+// Generate MCP tools array (single gateway tool)
 function generateTools() {
-  return services.map((service) => {
-    const ops = getServiceOperations(service);
-    const opList = ops
-      .map((op) => {
-        const shortName = stripPrefix(op.name, service.prefix);
-        const requiredParams = op.parameters
-          .filter((p) => p.required)
-          .map((p) => p.name)
-          .join(", ");
-        return requiredParams ? `${shortName}(${requiredParams})` : shortName;
-      })
-      .join(", ");
+  // Count all operations
+  let totalOps = 0;
+  for (const service of services) {
+    totalOps += getServiceOperations(service).length;
+  }
 
-    return {
-      name: service.name,
-      description: `${service.description}. Operations: ${opList}. action='describe' for docs`,
+  // Pick top operations for the description (most commonly used)
+  const topOps = [
+    "whatsapp.chats",
+    "whatsapp.send(to, message)",
+    "messages.recent",
+    "messages.send(to, message)",
+    "notes.list",
+    "reminders.list",
+  ];
+  const remaining = totalOps - topOps.length;
+
+  return [
+    {
+      name: "machina",
+      description: `Access Mac apps (Messages, WhatsApp, Notes, Reminders, Contacts). Top operations: ${topOps.join(", ")} +${remaining} more. action='describe' for full list`,
       inputSchema: {
         type: "object",
         properties: {
@@ -803,8 +870,8 @@ function generateTools() {
         },
         required: ["action"],
       },
-    };
-  });
+    },
+  ];
 }
 
 // Escape string for AppleScript double-quoted strings
@@ -3018,35 +3085,38 @@ async function executeOperation(
   }
 }
 
-// Handle a service tool call (mcp-hubby pattern: one tool per service)
-async function handleServiceTool(
-  serviceName: string,
-  args: Record<string, any>,
-): Promise<string> {
-  const service = services.find((s) => s.name === serviceName);
-  if (!service) {
-    return `Unknown service: ${serviceName}`;
-  }
-
+// Handle the single gateway tool call (MCP Hubby pattern)
+async function handleGatewayTool(args: Record<string, any>): Promise<string> {
   const action = args.action as string;
   const params = (args.params || {}) as Record<string, any>;
 
-  // No action = describe
+  // No action = describe all
   if (!action) {
-    return describeService(service);
+    return describeAllServices();
   }
 
   // describe action
   if (action === "describe") {
     if (params.operation) {
-      return describeOperationForService(service, params.operation);
+      return describeOperation(params.operation);
     }
-    return describeService(service);
+    return describeAllServices();
   }
 
-  // Execute the operation (add prefix back)
-  const fullAction = service.prefix + action;
-  return await executeOperation(fullAction, params);
+  // Convert dot notation to internal name (e.g., "whatsapp.chats" → "whatsapp_chats")
+  const internalName = fromDotNotation(action);
+  if (!internalName) {
+    // Maybe just a service name? Show helpful error
+    const service = services.find((s) => s.name === action);
+    if (service) {
+      return `To use ${service.displayName}, specify an operation:\n\n${describeService(service)}`;
+    }
+    const available = services.map((s) => s.name).join(", ");
+    return `Unknown action: ${action}\n\nExpected format: service.operation (e.g., whatsapp.chats)\nAvailable services: ${available}\nUse action='describe' to see all operations.`;
+  }
+
+  // Execute the operation
+  return await executeOperation(internalName, params);
 }
 
 // Generate tools dynamically (one per service)
@@ -3074,7 +3144,7 @@ function createServer(): Server {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    console.log(`Listing ${tools.length} service tools (mcp-hubby pattern)`);
+    console.log(`Listing ${tools.length} gateway tool (single tool pattern)`);
     return { tools };
   });
 
@@ -3082,15 +3152,13 @@ function createServer(): Server {
     const { name, arguments: args } = request.params;
     console.log(`Tool call: ${name}, action: ${args?.action || "none"}`);
 
-    // Check if this is a valid service
-    const service = services.find((s) => s.name === name);
-    if (!service) {
-      const available = services.map((s) => s.name).join(", ");
+    // Single gateway tool pattern - only "machina" tool exists
+    if (name !== "machina") {
       return {
         content: [
           {
             type: "text",
-            text: `Unknown service: ${name}. Available: ${available}`,
+            text: `Unknown tool: ${name}. Use 'machina' with action='service.operation' pattern.`,
           },
         ],
         isError: true,
@@ -3098,7 +3166,7 @@ function createServer(): Server {
     }
 
     try {
-      const result = await handleServiceTool(name, args || {});
+      const result = await handleGatewayTool(args || {});
       console.log(`Result preview: ${result.slice(0, 100)}...`);
       return {
         content: [{ type: "text", text: result }],
@@ -3165,9 +3233,12 @@ const httpServer = app.listen(PORT, "0.0.0.0", () => {
   console.log(`Machina MCP gateway running on http://0.0.0.0:${PORT}`);
   console.log(`MCP endpoint: POST /mcp`);
   console.log(`Health check: GET /health`);
-  console.log(`\n${tools.length} service tools (mcp-hubby pattern):`);
+  console.log(`\nSingle gateway tool pattern (like MCP Hubby):`);
+  console.log(`  Tool: machina`);
+  console.log(`  Usage: machina(action='service.operation', params={...})`);
+  console.log(`\nAvailable services:`);
   for (const service of services) {
     const ops = getServiceOperations(service);
-    console.log(`  ${service.name}: ${ops.length} operations`);
+    console.log(`  ${service.name}.* (${ops.length} operations)`);
   }
 });
