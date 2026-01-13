@@ -1248,10 +1248,31 @@ async function resolveToWhatsAppJid(
   if (isPhone) {
     const normalized = normalizePhone(trimmed);
     const jid = `${normalized}@s.whatsapp.net`;
-    // Verify this chat exists in DB
-    const existing = await queryWhatsAppDB(
-      `SELECT jid, name FROM chats WHERE jid = '${jid}' OR jid LIKE '%${normalized.slice(-10)}@s.whatsapp.net'`,
+
+    // Try exact match first
+    let existing = await queryWhatsAppDB(
+      `SELECT jid, name FROM chats WHERE jid = '${jid}'`,
     );
+
+    // If no exact match and input looks like it lacks country code (10 digits or less),
+    // try last-10-digit fallback
+    if (existing.length === 0 && normalized.length <= 10) {
+      existing = await queryWhatsAppDB(
+        `SELECT jid, name FROM chats WHERE jid LIKE '%${normalized.slice(-10)}@s.whatsapp.net'`,
+      );
+
+      // If multiple matches, this is ambiguous
+      if (existing.length > 1) {
+        return {
+          type: "ambiguous",
+          matches: existing.map((row: any) => ({
+            jid: row.jid,
+            name: row.name,
+          })),
+        };
+      }
+    }
+
     if (existing.length > 0) {
       return { type: "found", jid: existing[0].jid, name: existing[0].name };
     }
