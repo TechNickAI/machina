@@ -32,6 +32,13 @@ import {
 const execAsync = promisify(exec);
 
 const PORT = parseInt(process.env.MACHINA_PORT || "9900", 10);
+
+// AppleScript timeout configuration (ms)
+const APPLESCRIPT_TIMEOUT = 10_000; // 10s for normal operations
+const PERMISSION_CHECK_TIMEOUT = 3_000; // 3s for permission checks
+
+// Permission cache: tracks which apps have been verified this session
+const permissionCache = new Map<string, boolean>();
 const TOKEN = process.env.MACHINA_TOKEN;
 
 if (!TOKEN) {
@@ -975,21 +982,74 @@ async function ensureAppRunning(appName: string): Promise<void> {
   }
 }
 
-// Run AppleScript and return result
+// Check if an app has automation permission (cached per session)
+async function checkPermission(appName: string): Promise<void> {
+  // Return immediately if already verified
+  if (permissionCache.get(appName)) return;
+
+  const script = `tell application "${appName}" to return 1`;
+  try {
+    await execAsync(`osascript -e '${script}'`, {
+      timeout: PERMISSION_CHECK_TIMEOUT,
+    });
+    permissionCache.set(appName, true);
+  } catch (error: any) {
+    // Detect specific permission errors
+    if (error.message?.includes("Not authorized")) {
+      throw new Error(
+        `Permission denied for ${appName}. Grant automation access:\n` +
+          `System Settings → Privacy & Security → Automation → Enable ${appName}`,
+      );
+    }
+    if (error.killed || error.signal === "SIGTERM") {
+      throw new Error(
+        `Permission check timed out for ${appName} (${PERMISSION_CHECK_TIMEOUT / 1000}s).\n` +
+          `This usually means a permission dialog is waiting for your response.\n` +
+          `Check for a dialog on your Mac, or grant access in:\n` +
+          `System Settings → Privacy & Security → Automation`,
+      );
+    }
+    throw new Error(`Permission check failed for ${appName}: ${error.message}`);
+  }
+}
+
+// Run AppleScript and return result (with timeout)
 async function runAppleScript(
   script: string,
   appName?: string,
+  timeoutMs: number = APPLESCRIPT_TIMEOUT,
 ): Promise<string> {
-  // If an app is specified, ensure it's running first
+  // If an app is specified, check permission first (fast, cached)
   if (appName) {
+    await checkPermission(appName);
     await ensureAppRunning(appName);
   }
+
   try {
     const { stdout } = await execAsync(
       `osascript -e '${script.replace(/'/g, "'\"'\"'")}'`,
+      { timeout: timeoutMs },
     );
     return stdout.trim();
   } catch (error: any) {
+    // Handle timeout
+    if (error.killed || error.signal === "SIGTERM") {
+      throw new Error(
+        `AppleScript timed out after ${timeoutMs / 1000}s.\n` +
+          `This may indicate:\n` +
+          `  • A permission dialog is waiting for your response\n` +
+          `  • The operation is taking too long (try with fewer items)\n` +
+          `  • The app is unresponsive`,
+      );
+    }
+    // Handle permission errors
+    if (error.message?.includes("Not authorized")) {
+      const app = appName || "the target app";
+      throw new Error(
+        `Permission denied for ${app}. Grant automation access:\n` +
+          `System Settings → Privacy & Security → Automation`,
+      );
+    }
     throw new Error(`AppleScript error: ${error.message}`);
   }
 }
@@ -2260,7 +2320,9 @@ app.use(express.json());
 
 // Request logging middleware
 app.use((req, _res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.path} - Headers: ${JSON.stringify(req.headers)}`);
+  console.log(
+    `${new Date().toISOString()} ${req.method} ${req.path} - Headers: ${JSON.stringify(req.headers)}`,
+  );
   next();
 });
 
