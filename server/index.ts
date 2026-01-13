@@ -2258,17 +2258,23 @@ function createServer(): Server {
 const app = express();
 app.use(express.json());
 
+// Request logging middleware
+app.use((req, _res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.path} - Headers: ${JSON.stringify(req.headers)}`);
+  next();
+});
+
 // Health check (no auth required)
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", version: VERSION });
 });
 
-// MCP endpoint - stateless mode (no sessions, JSON responses)
-app.post("/mcp", authenticate, async (req: Request, res: Response) => {
+// MCP handler - stateless, creates new server per request
+const mcpHandler = async (req: Request, res: Response) => {
   try {
     const server = createServer();
     const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined, // Stateless - no session management
+      sessionIdGenerator: undefined, // Stateless - no sessions
       enableJsonResponse: true, // Return JSON instead of SSE
     });
 
@@ -2277,13 +2283,19 @@ app.post("/mcp", authenticate, async (req: Request, res: Response) => {
     await transport.handleRequest(req, res, req.body);
   } catch (error) {
     console.error("MCP error:", error);
-    res.status(500).json({
-      jsonrpc: "2.0",
-      error: { code: -32603, message: "Internal error" },
-      id: null,
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: "2.0",
+        error: { code: -32603, message: "Internal error" },
+        id: null,
+      });
+    }
   }
-});
+};
+
+// MCP endpoint - handle both GET and POST
+app.get("/mcp", authenticate, mcpHandler);
+app.post("/mcp", authenticate, mcpHandler);
 
 // Start server
 const httpServer = app.listen(PORT, "0.0.0.0", () => {
