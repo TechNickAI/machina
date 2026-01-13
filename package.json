@@ -10,7 +10,23 @@
   "scripts": {
     "start": "tsx server/index.ts",
     "dev": "tsx --watch server/index.ts",
-    "permissions": "tsx server/trigger-permissions.ts"
+    "permissions": "tsx server/trigger-permissions.ts",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "type-check": "tsc --noEmit",
+    "pre-push": "npm-run-all --parallel type-check format:check lint",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,js,mjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
   },
   "keywords": [
     "mcp",
@@ -38,7 +54,17 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.0.0",
     "@types/better-sqlite3": "^7.6.13",
-    "tsx": "^4.21.0"
+    "@types/express": "^5.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^16.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^16.0.0",
+    "npm-run-all2": "^8.0.0",
+    "prettier": "^3.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0"
   }
 }

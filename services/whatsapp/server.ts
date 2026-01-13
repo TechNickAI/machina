@@ -12,18 +12,10 @@
  * Port: 9901 (configurable via WHATSAPP_PORT env var)
  */
 
-import {
-  createServer,
-  type IncomingMessage,
-  type ServerResponse,
-} from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { pino } from "pino";
 import { initializeDatabase } from "./database.ts";
-import {
-  startWhatsAppConnection,
-  sendWhatsAppMessage,
-  type WhatsAppSocket,
-} from "./whatsapp.ts";
+import { startWhatsAppConnection, sendWhatsAppMessage, type WhatsAppSocket } from "./whatsapp.ts";
 
 const PORT = parseInt(process.env.WHATSAPP_PORT || "9901", 10);
 const dataDir = process.env.WHATSAPP_MCP_DATA_DIR || ".";
@@ -33,7 +25,7 @@ const logger = pino(
     level: process.env.LOG_LEVEL || "info",
     timestamp: pino.stdTimeFunctions.isoTime,
   },
-  pino.destination(`${dataDir}/whatsapp-service.log`),
+  pino.destination(`${dataDir}/whatsapp-service.log`)
 );
 
 let whatsappSocket: WhatsAppSocket | null = null;
@@ -91,12 +83,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         return;
       }
 
-      const result = await sendWhatsAppMessage(
-        logger,
-        whatsappSocket,
-        recipient,
-        message,
-      );
+      const result = await sendWhatsAppMessage(logger, whatsappSocket, recipient, message);
 
       if (result && result.key?.id) {
         sendJson(res, 200, {
