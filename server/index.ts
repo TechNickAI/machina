@@ -1084,6 +1084,205 @@ function queryMessagesDBRows(sql: string): any[] {
   }
 }
 
+// Contact resolution cache (phone/email → name)
+// Builds a mapping of all contact phones/emails to names
+let contactCache: Map<string, string> | null = null;
+let contactCacheTime = 0;
+const CONTACT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Build contact cache from Contacts SQLite database (much faster than AppleScript)
+async function buildContactCache(): Promise<Map<string, string>> {
+  const cache = new Map<string, string>();
+  const addressBookDir = `${process.env.HOME}/Library/Application Support/AddressBook/Sources`;
+
+  try {
+    // Find all source databases
+    const { stdout: sources } = await execAsync(`ls -d "${addressBookDir}"/*/ 2>/dev/null || true`);
+
+    for (const sourceDir of sources.trim().split("\n").filter(Boolean)) {
+      const dbPath = `${sourceDir}AddressBook-v22.abcddb`;
+      let db;
+
+      try {
+        db = new Database(dbPath, { readonly: true });
+
+        // Query phones with owner names
+        const phoneRows = db
+          .prepare(
+            `SELECT p.ZFULLNUMBER as phone,
+                    COALESCE(r.ZFIRSTNAME, '') || ' ' || COALESCE(r.ZLASTNAME, '') as name
+             FROM ZABCDPHONENUMBER p
+             JOIN ZABCDRECORD r ON p.ZOWNER = r.Z_PK
+             WHERE p.ZFULLNUMBER IS NOT NULL`,
+          )
+          .all() as { phone: string; name: string }[];
+
+        for (const row of phoneRows) {
+          const name = row.name.trim();
+          if (name) {
+            // Store both original and normalized
+            cache.set(row.phone.toLowerCase().trim(), name);
+            cache.set(normalizePhone(row.phone), name);
+          }
+        }
+
+        // Query emails with owner names
+        const emailRows = db
+          .prepare(
+            `SELECT e.ZADDRESSNORMALIZED as email,
+                    COALESCE(r.ZFIRSTNAME, '') || ' ' || COALESCE(r.ZLASTNAME, '') as name
+             FROM ZABCDEMAILADDRESS e
+             JOIN ZABCDRECORD r ON e.ZOWNER = r.Z_PK
+             WHERE e.ZADDRESSNORMALIZED IS NOT NULL`,
+          )
+          .all() as { email: string; name: string }[];
+
+        for (const row of emailRows) {
+          const name = row.name.trim();
+          if (name) {
+            cache.set(row.email.toLowerCase().trim(), name);
+          }
+        }
+      } catch {
+        // Skip databases that can't be opened
+      } finally {
+        if (db) db.close();
+      }
+    }
+
+    console.log(`Contact cache built: ${cache.size} entries`);
+    return cache;
+  } catch (error: any) {
+    console.error("Failed to build contact cache:", error.message);
+    return new Map();
+  }
+}
+
+// Resolve a phone/email handle to a contact name
+async function resolveHandleToName(handle: string): Promise<string> {
+  // Refresh cache if expired
+  if (!contactCache || Date.now() - contactCacheTime > CONTACT_CACHE_TTL) {
+    contactCache = await buildContactCache();
+    contactCacheTime = Date.now();
+  }
+
+  // Try exact match first
+  const lowerHandle = handle.toLowerCase().trim();
+  if (contactCache.has(lowerHandle)) {
+    return contactCache.get(lowerHandle)!;
+  }
+
+  // Try normalized phone number match
+  if (/^[\d\s\-\(\)\+]+$/.test(handle)) {
+    const normalized = normalizePhone(handle);
+    if (contactCache.has(normalized)) {
+      return contactCache.get(normalized)!;
+    }
+  }
+
+  // Return original handle if no match found
+  return handle;
+}
+
+// Resolve multiple handles at once (more efficient)
+async function resolveHandlesToNames(
+  handles: string[],
+): Promise<Map<string, string>> {
+  // Refresh cache if expired
+  if (!contactCache || Date.now() - contactCacheTime > CONTACT_CACHE_TTL) {
+    contactCache = await buildContactCache();
+    contactCacheTime = Date.now();
+  }
+
+  const result = new Map<string, string>();
+  for (const handle of handles) {
+    result.set(handle, await resolveHandleToName(handle));
+  }
+  return result;
+}
+
+// Extract phone number from WhatsApp JID (e.g., "15551234567@s.whatsapp.net" → "+15551234567")
+function phoneFromJid(jid: string): string | null {
+  const match = jid.match(/^(\d+)@/);
+  if (match) {
+    return "+" + match[1];
+  }
+  return null;
+}
+
+// Format message rows with resolved contact names
+// Works for both iMessage and WhatsApp - DRY helper
+interface MessageRowInput {
+  date?: string;
+  timestamp?: string;
+  handle?: string;
+  sender?: string;
+  jid?: string;
+  text?: string;
+  content?: string;
+  is_from_me?: boolean | number;
+  chat_name?: string;
+}
+
+async function formatMessagesWithNames(
+  rows: MessageRowInput[],
+  options: {
+    includeChat?: boolean;
+    handleField?: "handle" | "sender" | "jid";
+    dateField?: "date" | "timestamp";
+    textField?: "text" | "content";
+  } = {},
+): Promise<string> {
+  const {
+    includeChat = false,
+    handleField = "handle",
+    dateField = "date",
+    textField = "text",
+  } = options;
+
+  // Collect unique handles and convert JIDs to phone numbers if needed
+  const handleToPhone = new Map<string, string>();
+  for (const r of rows) {
+    const rawHandle = (r as any)[handleField] as string | undefined;
+    if (rawHandle && !r.is_from_me) {
+      // If it's a JID, extract the phone number
+      const phone = rawHandle.includes("@")
+        ? phoneFromJid(rawHandle)
+        : rawHandle;
+      if (phone) {
+        handleToPhone.set(rawHandle, phone);
+      }
+    }
+  }
+
+  // Resolve phone numbers to names
+  const phones = [...new Set([...handleToPhone.values()])];
+  const nameMap = await resolveHandlesToNames(phones);
+
+  return rows
+    .map((r) => {
+      const dateVal = (r as any)[dateField] || "";
+      const textVal = (r as any)[textField] || "";
+      const rawHandle = (r as any)[handleField] as string | undefined;
+
+      let sender: string;
+      if (r.is_from_me) {
+        sender = "Me";
+      } else if (rawHandle) {
+        const phone = handleToPhone.get(rawHandle) || rawHandle;
+        sender = nameMap.get(phone) || phone;
+      } else {
+        sender = "Unknown";
+      }
+
+      if (includeChat && r.chat_name) {
+        return `${dateVal}|${r.chat_name}|${sender}|${textVal}`;
+      }
+      return `${dateVal}|${sender}|${textVal}`;
+    })
+    .join("\n");
+}
+
 // WhatsApp configuration
 const WHATSAPP_DB_PATH = `${process.env.HOME}/machina/components/whatsapp-mcp-ts/data/whatsapp.db`;
 const WHATSAPP_API_URL = "http://localhost:9901";
@@ -1186,27 +1385,31 @@ async function executeOperation(
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
       const escapedContact = escapeSQL(params.contact);
       const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
-        CASE WHEN m.is_from_me THEN 'Me' ELSE h.id END as sender,
+        m.is_from_me,
+        h.id as handle,
         m.text
         FROM message m
         LEFT JOIN handle h ON m.handle_id = h.ROWID
         WHERE h.id LIKE '%${escapedContact}%' ESCAPE '\\' AND m.text IS NOT NULL
         ORDER BY m.date DESC LIMIT ${limit}`;
-      const result = await queryMessagesDB(sql);
-      return result || `No messages found for ${params.contact}`;
+      const rows = queryMessagesDBRows(sql);
+      if (rows.length === 0) return `No messages found for ${params.contact}`;
+      return await formatMessagesWithNames(rows);
     }
 
     case "messages_recent": {
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
       const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
-        CASE WHEN m.is_from_me THEN 'Me' ELSE h.id END as sender,
+        m.is_from_me,
+        h.id as handle,
         m.text
         FROM message m
         LEFT JOIN handle h ON m.handle_id = h.ROWID
         WHERE m.text IS NOT NULL
         ORDER BY m.date DESC LIMIT ${limit}`;
-      const result = await queryMessagesDB(sql);
-      return result || "No recent messages found";
+      const rows = queryMessagesDBRows(sql);
+      if (rows.length === 0) return "No recent messages found";
+      return await formatMessagesWithNames(rows);
     }
 
     case "messages_search": {
@@ -1214,14 +1417,16 @@ async function executeOperation(
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
       const escapedQuery = escapeSQL(params.query);
       const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
-        CASE WHEN m.is_from_me THEN 'Me' ELSE h.id END as sender,
+        m.is_from_me,
+        h.id as handle,
         m.text
         FROM message m
         LEFT JOIN handle h ON m.handle_id = h.ROWID
         WHERE m.text LIKE '%${escapedQuery}%' ESCAPE '\\'
         ORDER BY m.date DESC LIMIT ${limit}`;
-      const result = await queryMessagesDB(sql);
-      return result || `No messages found matching "${params.query}"`;
+      const rows = queryMessagesDBRows(sql);
+      if (rows.length === 0) return `No messages found matching "${params.query}"`;
+      return await formatMessagesWithNames(rows);
     }
 
     case "messages_conversations": {
@@ -1237,8 +1442,20 @@ async function executeOperation(
         GROUP BY c.ROWID
         ORDER BY last_date DESC
         LIMIT ${limit}`;
-      const result = await queryMessagesDB(sql);
-      return result || "No conversations found";
+      const rows = queryMessagesDBRows(sql);
+      if (rows.length === 0) return "No conversations found";
+
+      // Resolve participant phone numbers to names
+      const participants = [...new Set(rows.map((r: any) => r.participant).filter(Boolean))];
+      const nameMap = await resolveHandlesToNames(participants);
+
+      return rows
+        .map((r: any) => {
+          // Use display_name if available, otherwise resolved contact name, otherwise raw participant
+          const displayName = r.name || nameMap.get(r.participant) || r.participant;
+          return `${displayName}|${r.last_date || ""}|${r.last_message || ""}`;
+        })
+        .join("\n");
     }
 
     case "messages_conversation_context": {
@@ -2017,7 +2234,8 @@ async function executeOperation(
       const escaped = escapeSQL(params.chatJid);
 
       const sql = `SELECT timestamp,
-        CASE WHEN is_from_me THEN 'Me' ELSE sender END as sender,
+        is_from_me,
+        sender,
         content
         FROM messages
         WHERE chat_jid = '${escaped}'
@@ -2027,9 +2245,11 @@ async function executeOperation(
       if (rows.length === 0)
         return `No messages found for chat: ${params.chatJid}`;
 
-      return rows
-        .map((r) => `[${r.timestamp}] ${r.sender}: ${r.content}`)
-        .join("\n");
+      return await formatMessagesWithNames(rows, {
+        handleField: "sender",
+        dateField: "timestamp",
+        textField: "content",
+      });
     }
 
     case "whatsapp_search": {
@@ -2038,7 +2258,8 @@ async function executeOperation(
       const escaped = escapeSQL(params.query);
 
       const sql = `SELECT m.timestamp,
-        CASE WHEN m.is_from_me THEN 'Me' ELSE m.sender END as sender,
+        m.is_from_me,
+        m.sender,
         c.name as chat_name,
         m.content
         FROM messages m
@@ -2050,12 +2271,12 @@ async function executeOperation(
       if (rows.length === 0)
         return `No messages found matching: ${params.query}`;
 
-      return rows
-        .map(
-          (r) =>
-            `[${r.timestamp}] ${r.chat_name || "Unknown"} - ${r.sender}: ${r.content}`,
-        )
-        .join("\n");
+      return await formatMessagesWithNames(rows, {
+        handleField: "sender",
+        dateField: "timestamp",
+        textField: "content",
+        includeChat: true,
+      });
     }
 
     case "whatsapp_contacts": {
