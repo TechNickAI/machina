@@ -97,7 +97,19 @@ Traditional installers follow deterministic steps and break on edge cases. Machi
 | Contacts   | AppleScript                                   | ✅ Ready |
 | WhatsApp   | Baileys library + SQLite (optional, needs QR) | ✅ Ready |
 
-All operations use the **progressive disclosure** pattern - one `machina` tool, operations discovered via `describe` action.
+All operations use the **progressive disclosure** pattern - one `machina` tool with dot-notation operations:
+
+```
+// Discover all available operations
+machina(action='describe')
+
+// Specific operation details
+machina(action='describe', params={operation: 'whatsapp.send'})
+
+// Execute an operation
+machina(action='whatsapp.chats', params={limit: 5})
+machina(action='messages.send', params={to: 'Mom', body: 'Hi!'})
+```
 
 ## Architecture
 
