@@ -35,6 +35,7 @@ const PORT = parseInt(process.env.MACHINA_PORT || "9900", 10);
 
 // AppleScript timeout configuration (ms)
 const APPLESCRIPT_TIMEOUT = 10_000; // 10s for normal operations
+const REMINDERS_TIMEOUT = 45_000; // 45s for Reminders (iCloud sync is slow)
 const PERMISSION_CHECK_TIMEOUT = 3_000; // 3s for permission checks
 
 // Permission cache: tracks which apps have been verified this session
@@ -1096,8 +1097,13 @@ async function buildContactCache(): Promise<Map<string, string>> {
   const addressBookDir = `${process.env.HOME}/Library/Application Support/AddressBook/Sources`;
 
   try {
-    // Find all source databases
-    const { stdout: sources } = await execAsync(`ls -d "${addressBookDir}"/*/ 2>/dev/null || true`);
+    // Find all source databases with timeout to prevent blocking
+    const { stdout: sources } = await Promise.race([
+      execAsync(`ls -d "${addressBookDir}"/*/ 2>/dev/null || true`),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("AddressBook access timeout")), 5000),
+      ),
+    ]);
 
     for (const sourceDir of sources.trim().split("\n").filter(Boolean)) {
       const dbPath = `${sourceDir}AddressBook-v22.abcddb`;
@@ -1427,35 +1433,35 @@ async function executeOperation(
         WHERE m.text LIKE '%${escapedQuery}%' ESCAPE '\\'
         ORDER BY m.date DESC LIMIT ${limit}`;
       const rows = queryMessagesDBRows(sql);
-      if (rows.length === 0) return `No messages found matching "${params.query}"`;
+      if (rows.length === 0)
+        return `No messages found matching "${params.query}"`;
       return await formatMessagesWithNames(rows);
     }
 
     case "messages_conversations": {
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
+      // Get most recent message per handle using subquery for correct last_message
       const sql = `SELECT
-        c.display_name as name,
         h.id as participant,
-        (SELECT text FROM message WHERE cache_roomnames = c.room_name OR handle_id = h.ROWID ORDER BY date DESC LIMIT 1) as last_message,
-        datetime((SELECT date/1000000000 + 978307200 FROM message WHERE cache_roomnames = c.room_name OR handle_id = h.ROWID ORDER BY date DESC LIMIT 1), 'unixepoch', 'localtime') as last_date
-        FROM chat c
-        LEFT JOIN chat_handle_join chj ON c.ROWID = chj.chat_id
-        LEFT JOIN handle h ON chj.handle_id = h.ROWID
-        GROUP BY c.ROWID
-        ORDER BY last_date DESC
-        LIMIT ${limit}`;
+        m.text as last_message,
+        datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as last_date
+      FROM message m
+      JOIN handle h ON m.handle_id = h.ROWID
+      WHERE m.text IS NOT NULL AND m.text <> ''
+        AND m.date = (
+          SELECT MAX(m2.date) FROM message m2
+          WHERE m2.handle_id = m.handle_id AND m2.text IS NOT NULL AND m2.text <> ''
+        )
+      ORDER BY m.date DESC
+      LIMIT ${limit}`;
       const rows = queryMessagesDBRows(sql);
       if (rows.length === 0) return "No conversations found";
 
-      // Resolve participant phone numbers to names
-      const participants = [...new Set(rows.map((r: any) => r.participant).filter(Boolean))];
-      const nameMap = await resolveHandlesToNames(participants);
-
+      // Skip contact resolution for now (requires Full Disk Access for AddressBook)
+      // Just return raw phone numbers
       return rows
         .map((r: any) => {
-          // Use display_name if available, otherwise resolved contact name, otherwise raw participant
-          const displayName = r.name || nameMap.get(r.participant) || r.participant;
-          return `${displayName}|${r.last_date || ""}|${r.last_message || ""}`;
+          return `${r.participant || "Unknown"}|${r.last_date || ""}|${r.last_message || ""}`;
         })
         .join("\n");
     }
@@ -1589,8 +1595,8 @@ async function executeOperation(
 
       const recent = queryMessagesDBRows(recentSql)[0];
 
-      // Look up contact name
-      const contactName = await lookupContact(handleId);
+      // Look up contact name using cached SQLite data (fast)
+      const contactName = await resolveHandleToName(handleId);
 
       // Get attachment details for messages that have them
       const attachmentIds = messages
@@ -1863,7 +1869,7 @@ async function executeOperation(
           return reminderList as text
         end tell`;
       }
-      return await runAppleScript(script, "Reminders");
+      return await runAppleScript(script, "Reminders", REMINDERS_TIMEOUT);
     }
 
     case "reminders_create": {
@@ -1891,7 +1897,7 @@ async function executeOperation(
         end tell
         return "Created reminder: ${escapedTitle}"
       end tell`;
-      return await runAppleScript(script, "Reminders");
+      return await runAppleScript(script, "Reminders", REMINDERS_TIMEOUT);
     }
 
     case "reminders_complete": {
@@ -1909,7 +1915,7 @@ async function executeOperation(
         set completed of targetReminder to true
         return "Completed: " & name of targetReminder
       end tell`;
-      return await runAppleScript(script, "Reminders");
+      return await runAppleScript(script, "Reminders", REMINDERS_TIMEOUT);
     }
 
     // ============== CONTACTS ==============
@@ -2305,9 +2311,9 @@ async function executeOperation(
       const limit = Math.min(Math.max(1, params.limit || 100), 500);
       const escaped = escapeSQL(params.chatJid);
 
-      // Calculate timestamp for N days ago (WhatsApp uses Unix seconds)
-      const daysAgoTimestamp =
-        Math.floor(Date.now() / 1000) - days * 24 * 60 * 60;
+      // Calculate ISO timestamp for N days ago (WhatsApp stores timestamps as ISO strings)
+      const daysAgo = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      const daysAgoISO = daysAgo.toISOString();
 
       // Get messages
       const messagesSql = `
@@ -2318,7 +2324,7 @@ async function executeOperation(
           content
         FROM messages
         WHERE chat_jid = '${escaped}'
-          AND timestamp > ${daysAgoTimestamp}
+          AND timestamp > '${daysAgoISO}'
         ORDER BY timestamp ASC
         LIMIT ${limit}`;
 
@@ -2350,12 +2356,12 @@ async function executeOperation(
           SUM(CASE WHEN is_from_me = 0 THEN 1 ELSE 0 END) as from_them
         FROM messages
         WHERE chat_jid = '${escaped}'
-          AND timestamp > ${daysAgoTimestamp}`;
+          AND timestamp > '${daysAgoISO}'`;
       const stats = (await queryWhatsAppDB(statsSql))[0];
 
-      // Format messages for LLM analysis
+      // Format messages for LLM analysis (timestamps are already ISO strings)
       const formattedMessages = messages.map((m: any) => ({
-        timestamp: new Date(m.timestamp * 1000).toISOString(),
+        timestamp: m.timestamp,
         sender: m.is_from_me ? "You" : m.sender || "Them",
         content: m.content,
       }));
@@ -2369,12 +2375,8 @@ async function executeOperation(
         },
         metadata: {
           days_included: days,
-          first_message: stats.first_message
-            ? new Date(stats.first_message * 1000).toISOString()
-            : null,
-          last_message: stats.last_message
-            ? new Date(stats.last_message * 1000).toISOString()
-            : null,
+          first_message: stats.first_message || null,
+          last_message: stats.last_message || null,
           total_messages: stats.total_messages,
           from_you: stats.from_you,
           from_them: stats.from_them,
