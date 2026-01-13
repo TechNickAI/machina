@@ -1,12 +1,11 @@
-# Components (cloned during setup, not committed)
-/components/
-
 # Configuration (contains secrets)
-config/.env
-config/*.local
+.env
+.env.*
 
 # Logs
 logs/
+
+.env
 
 # macOS
 .DS_Store
@@ -16,7 +15,6 @@ node_modules/
 bun.lockb
 
 # Editor
-.vscode/
 .idea/
 *.swp
 *.swo
