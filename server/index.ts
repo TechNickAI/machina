@@ -19,15 +19,22 @@ import { promisify } from "node:util";
 import { createRequire } from "node:module";
 import Database from "better-sqlite3";
 
+// Import from lib modules
+import { escapeSQLLike, normalizePhone, formatRelativeTime, formatChatAge } from "../lib/utils.js";
+import { queryMessagesDBRows } from "../lib/messages-db.js";
+import {
+  resolveHandleToName,
+  resolveHandlesToNames,
+  searchContactsByName,
+  getContactCache,
+} from "../lib/contacts-resolver.js";
+
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json");
 const VERSION = pkg.version;
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import {
-  ListToolsRequestSchema,
-  CallToolRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 const execAsync = promisify(exec);
 
@@ -56,7 +63,7 @@ interface OperationParam {
   type: string;
   required: boolean;
   description: string;
-  default?: any;
+  default?: unknown;
 }
 
 interface Operation {
@@ -90,10 +97,8 @@ const operations: Operation[] = [
         description: "Message text to send",
       },
     ],
-    returns:
-      "Structured response: success confirmation or disambiguation options",
-    example:
-      "machina(action='messages_send', params={to: 'Mom', message: 'Hello!'})",
+    returns: "Structured response: success confirmation or disambiguation options",
+    example: "machina(action='messages_send', params={to: 'Mom', message: 'Hello!'})",
   },
   {
     name: "messages_read",
@@ -114,8 +119,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Messages with timestamp, sender (Me or contact), and text",
-    example:
-      "machina(action='messages_read', params={contact: '+15551234567', limit: 50})",
+    example: "machina(action='messages_read', params={contact: '+15551234567', limit: 50})",
   },
   {
     name: "messages_recent",
@@ -151,8 +155,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Matching messages with timestamp, sender, and text",
-    example:
-      "machina(action='messages_search', params={query: 'meeting tomorrow', limit: 10})",
+    example: "machina(action='messages_search', params={query: 'meeting tomorrow', limit: 10})",
   },
   {
     name: "messages_conversations",
@@ -166,8 +169,7 @@ const operations: Operation[] = [
         default: 20,
       },
     ],
-    returns:
-      "List of conversations with participant info and last message preview",
+    returns: "List of conversations with participant info and last message preview",
     example: "machina(action='messages_conversations', params={limit: 10})",
   },
   {
@@ -181,8 +183,7 @@ const operations: Operation[] = [
         name: "contact",
         type: "string",
         required: true,
-        description:
-          "Phone number, email, or contact name to get conversation for",
+        description: "Phone number, email, or contact name to get conversation for",
       },
       {
         name: "days",
@@ -199,10 +200,8 @@ const operations: Operation[] = [
         default: 100,
       },
     ],
-    returns:
-      "JSON object with conversation metadata and messages array in LLM-friendly format",
-    example:
-      "machina(action='conversation_context', params={contact: '+15551234567', days: 7})",
+    returns: "JSON object with conversation metadata and messages array in LLM-friendly format",
+    example: "machina(action='conversation_context', params={contact: '+15551234567', days: 7})",
   },
   {
     name: "messages_get_attachment",
@@ -280,8 +279,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Confirmation with note title",
-    example:
-      "machina(action='notes_create', params={title: 'New Note', body: 'Content here'})",
+    example: "machina(action='notes_create', params={title: 'New Note', body: 'Content here'})",
   },
   {
     name: "notes_search",
@@ -325,8 +323,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Reminders grouped by list with due dates",
-    example:
-      "machina(action='reminders_list', params={includeCompleted: false})",
+    example: "machina(action='reminders_list', params={includeCompleted: false})",
   },
   {
     name: "reminders_create",
@@ -359,8 +356,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Confirmation with reminder title",
-    example:
-      "machina(action='reminders_create', params={title: 'Call mom', list: 'Personal'})",
+    example: "machina(action='reminders_create', params={title: 'Call mom', list: 'Personal'})",
   },
   {
     name: "reminders_complete",
@@ -370,8 +366,7 @@ const operations: Operation[] = [
         name: "title",
         type: "string",
         required: true,
-        description:
-          "Title of the reminder to complete (exact or partial match)",
+        description: "Title of the reminder to complete (exact or partial match)",
       },
       {
         name: "list",
@@ -476,10 +471,8 @@ const operations: Operation[] = [
         description: "Message text to send",
       },
     ],
-    returns:
-      "Structured response: success confirmation or disambiguation options",
-    example:
-      "machina(action='whatsapp_send', params={to: 'John', message: 'Hello!'})",
+    returns: "Structured response: success confirmation or disambiguation options",
+    example: "machina(action='whatsapp_send', params={to: 'John', message: 'Hello!'})",
   },
   {
     name: "whatsapp_chats",
@@ -525,10 +518,8 @@ const operations: Operation[] = [
         default: 20,
       },
     ],
-    returns:
-      "Messages with timestamp, sender (Me or contact name), and content",
-    example:
-      "machina(action='whatsapp_messages', params={contact: 'John', limit: 50})",
+    returns: "Messages with timestamp, sender (Me or contact name), and content",
+    example: "machina(action='whatsapp_messages', params={contact: 'John', limit: 50})",
   },
   {
     name: "whatsapp_search",
@@ -551,8 +542,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Matching messages with timestamp, sender, chat name, and content",
-    example:
-      "machina(action='whatsapp_search', params={query: 'meeting tomorrow', limit: 10})",
+    example: "machina(action='whatsapp_search', params={query: 'meeting tomorrow', limit: 10})",
   },
   {
     name: "whatsapp_contacts",
@@ -575,8 +565,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "List of contacts with name and JID (use JID for messaging)",
-    example:
-      "machina(action='whatsapp_contacts', params={query: 'John Smith', limit: 10})",
+    example: "machina(action='whatsapp_contacts', params={query: 'John Smith', limit: 10})",
   },
   {
     name: "whatsapp_chat_context",
@@ -607,10 +596,8 @@ const operations: Operation[] = [
         default: 100,
       },
     ],
-    returns:
-      "JSON object with conversation metadata and messages array in LLM-friendly format",
-    example:
-      "machina(action='whatsapp_chat_context', params={contact: 'John', days: 7})",
+    returns: "JSON object with conversation metadata and messages array in LLM-friendly format",
+    example: "machina(action='whatsapp_chat_context', params={contact: 'John', days: 7})",
   },
   {
     name: "whatsapp_status",
@@ -618,8 +605,7 @@ const operations: Operation[] = [
       "Check WhatsApp connection status. Use before sending messages to verify the service is connected, " +
       "or to diagnose issues when sends fail. Shows connected user info.",
     parameters: [],
-    returns:
-      "Connection status (connected/disconnected) and logged-in user info",
+    returns: "Connection status (connected/disconnected) and logged-in user info",
     example: "machina(action='whatsapp_status')",
   },
   {
@@ -633,8 +619,7 @@ const operations: Operation[] = [
         name: "sql",
         type: "string",
         required: true,
-        description:
-          "SELECT query to execute (INSERT/UPDATE/DELETE not allowed)",
+        description: "SELECT query to execute (INSERT/UPDATE/DELETE not allowed)",
       },
     ],
     returns: "Query results as JSON array",
@@ -664,8 +649,7 @@ const services: ServiceDef[] = [
   {
     name: "whatsapp",
     displayName: "WhatsApp",
-    description:
-      "Send and read WhatsApp messages. Use contacts/chats to discover JIDs first.",
+    description: "Send and read WhatsApp messages. Use contacts/chats to discover JIDs first.",
     prefix: "whatsapp_",
   },
   {
@@ -726,7 +710,7 @@ function describeService(service: ServiceDef): string {
       .map((p) => p.name)
       .join(", ");
     lines.push(
-      `  ${shortName}${requiredParams ? `(${requiredParams})` : ""} - ${op.description.split(".")[0]}`,
+      `  ${shortName}${requiredParams ? `(${requiredParams})` : ""} - ${op.description.split(".")[0]}`
     );
   }
 
@@ -738,16 +722,11 @@ function describeService(service: ServiceDef): string {
 
   lines.push("\n---");
   lines.push(`Usage: ${service.name}(action='operation', params={...})`);
-  lines.push(
-    "Tip: action='describe', params={operation: 'name'} for detailed docs",
-  );
+  lines.push("Tip: action='describe', params={operation: 'name'} for detailed docs");
   return lines.join("\n");
 }
 
-function describeOperationForService(
-  service: ServiceDef,
-  shortName: string,
-): string {
+function describeOperationForService(service: ServiceDef, shortName: string): string {
   const fullName = service.prefix + shortName;
   const op = operations.find((o) => o.name === fullName);
   if (!op) {
@@ -757,9 +736,7 @@ function describeOperationForService(
     return `Unknown operation: ${shortName}\n\nAvailable for ${service.displayName}: ${available}`;
   }
 
-  const lines = [
-    `**${stripPrefix(op.name, service.prefix)}**\n${op.description}\n`,
-  ];
+  const lines = [`**${stripPrefix(op.name, service.prefix)}**\n${op.description}\n`];
 
   if (op.parameters.length > 0) {
     lines.push("Parameters:");
@@ -771,7 +748,7 @@ function describeOperationForService(
 
   lines.push(`\nReturns: ${op.returns}`);
   lines.push(
-    `\nUsage: ${service.name}(action='${stripPrefix(op.name, service.prefix)}', params={...})`,
+    `\nUsage: ${service.name}(action='${stripPrefix(op.name, service.prefix)}', params={...})`
   );
 
   return lines.join("\n");
@@ -810,80 +787,6 @@ function generateTools() {
 // Escape string for AppleScript double-quoted strings
 function escapeAppleScript(str: string): string {
   return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-// Escape string for SQL LIKE patterns (prevents SQL injection)
-// Escapes: ' (quotes), % and _ (LIKE wildcards), \ (escape character)
-function escapeSQL(str: string): string {
-  return str
-    .replace(/\\/g, "\\\\") // Backslash first to avoid double-escaping
-    .replace(/'/g, "''")
-    .replace(/%/g, "\\%")
-    .replace(/_/g, "\\_");
-}
-
-// Normalize phone number for matching (strips formatting)
-function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  // Handle US numbers with or without country code
-  if (digits.length === 10) return `1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return digits;
-  return digits;
-}
-
-// Format relative time ("5 minutes ago", "2 days ago")
-function formatRelativeTime(date: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHour = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHour / 24);
-
-  if (diffSec < 60) return "just now";
-  if (diffMin === 1) return "1 minute ago";
-  if (diffMin < 60) return `${diffMin} minutes ago`;
-  if (diffHour === 1) return "1 hour ago";
-  if (diffHour < 24) return `${diffHour} hours ago`;
-  if (diffDay === 1) return "yesterday";
-  if (diffDay < 7) return `${diffDay} days ago`;
-  if (diffDay < 30) {
-    const weeks = Math.floor(diffDay / 7);
-    return weeks === 1 ? "1 week ago" : `${weeks} weeks ago`;
-  }
-  if (diffDay < 365) {
-    const months = Math.floor(diffDay / 30);
-    return months === 1 ? "1 month ago" : `${months} months ago`;
-  }
-  const years = Math.floor(diffDay / 365);
-  return years === 1 ? "1 year ago" : `${years} years ago`;
-}
-
-// Format chat age ("5 years, 3 months")
-function formatChatAge(startDate: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - startDate.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 1) return "1 day";
-  if (diffDays < 7) return `${diffDays} days`;
-
-  if (diffDays < 30) {
-    const weeks = Math.floor(diffDays / 7);
-    return weeks === 1 ? "1 week" : `${weeks} weeks`;
-  }
-
-  if (diffDays < 365) {
-    const months = Math.floor(diffDays / 30);
-    return `${months} month${months !== 1 ? "s" : ""}`;
-  }
-
-  const years = Math.floor(diffDays / 365);
-  const remainingDays = diffDays % 365;
-  const months = Math.floor(remainingDays / 30);
-
-  if (months === 0) return `${years} year${years !== 1 ? "s" : ""}`;
-  return `${years} year${years !== 1 ? "s" : ""}, ${months} month${months !== 1 ? "s" : ""}`;
 }
 
 // Look up contact name from phone number or email via AppleScript
@@ -956,10 +859,7 @@ async function lookupContact(identifier: string): Promise<string | null> {
 }
 
 // Get attachment type from MIME type or filename
-function getAttachmentType(
-  mimeType: string | null,
-  filename: string | null,
-): string {
+function getAttachmentType(mimeType: string | null, filename: string | null): string {
   if (mimeType) {
     if (mimeType.startsWith("image/")) return "image";
     if (mimeType.startsWith("video/")) return "video";
@@ -968,8 +868,7 @@ function getAttachmentType(
   }
   if (filename) {
     const ext = filename.split(".").pop()?.toLowerCase();
-    if (["jpg", "jpeg", "png", "gif", "heic", "webp"].includes(ext || ""))
-      return "image";
+    if (["jpg", "jpeg", "png", "gif", "heic", "webp"].includes(ext || "")) return "image";
     if (["mp4", "mov", "m4v", "avi"].includes(ext || "")) return "video";
     if (["mp3", "m4a", "wav", "caf", "aac"].includes(ext || "")) return "audio";
     if (ext === "pdf") return "pdf";
@@ -1005,7 +904,7 @@ async function checkPermission(appName: string): Promise<void> {
     if (error.message?.includes("Not authorized")) {
       throw new Error(
         `Permission denied for ${appName}. Grant automation access:\n` +
-          `System Settings → Privacy & Security → Automation → Enable ${appName}`,
+          `System Settings → Privacy & Security → Automation → Enable ${appName}`
       );
     }
     if (error.killed || error.signal === "SIGTERM") {
@@ -1013,7 +912,7 @@ async function checkPermission(appName: string): Promise<void> {
         `Permission check timed out for ${appName} (${PERMISSION_CHECK_TIMEOUT / 1000}s).\n` +
           `This usually means a permission dialog is waiting for your response.\n` +
           `Check for a dialog on your Mac, or grant access in:\n` +
-          `System Settings → Privacy & Security → Automation`,
+          `System Settings → Privacy & Security → Automation`
       );
     }
     throw new Error(`Permission check failed for ${appName}: ${error.message}`);
@@ -1024,7 +923,7 @@ async function checkPermission(appName: string): Promise<void> {
 async function runAppleScript(
   script: string,
   appName?: string,
-  timeoutMs: number = APPLESCRIPT_TIMEOUT,
+  timeoutMs: number = APPLESCRIPT_TIMEOUT
 ): Promise<string> {
   // If an app is specified, check permission first (fast, cached)
   if (appName) {
@@ -1033,10 +932,9 @@ async function runAppleScript(
   }
 
   try {
-    const { stdout } = await execAsync(
-      `osascript -e '${script.replace(/'/g, "'\"'\"'")}'`,
-      { timeout: timeoutMs },
-    );
+    const { stdout } = await execAsync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`, {
+      timeout: timeoutMs,
+    });
     return stdout.trim();
   } catch (error: any) {
     // Handle timeout
@@ -1046,7 +944,7 @@ async function runAppleScript(
           `This may indicate:\n` +
           `  • A permission dialog is waiting for your response\n` +
           `  • The operation is taking too long (try with fewer items)\n` +
-          `  • The app is unresponsive`,
+          `  • The app is unresponsive`
       );
     }
     // Handle permission errors
@@ -1054,168 +952,16 @@ async function runAppleScript(
       const app = appName || "the target app";
       throw new Error(
         `Permission denied for ${app}. Grant automation access:\n` +
-          `System Settings → Privacy & Security → Automation`,
+          `System Settings → Privacy & Security → Automation`
       );
     }
     throw new Error(`AppleScript error: ${error.message}`);
   }
 }
 
-// SQLite query helper for Messages (returns pipe-delimited string)
-async function queryMessagesDB(sql: string): Promise<string> {
-  const dbPath = `${process.env.HOME}/Library/Messages/chat.db`;
-  let db;
-  try {
-    db = new Database(dbPath, { readonly: true });
-    const rows = db.prepare(sql).all();
-    // Return formatted output similar to sqlite3 CLI
-    return rows.map((row) => Object.values(row).join("|")).join("\n");
-  } catch (error: any) {
-    throw new Error(`Messages database error: ${error.message}`);
-  } finally {
-    if (db) db.close();
-  }
-}
-
-// SQLite query helper for Messages (returns objects)
-function queryMessagesDBRows(sql: string): any[] {
-  const dbPath = `${process.env.HOME}/Library/Messages/chat.db`;
-  let db;
-  try {
-    db = new Database(dbPath, { readonly: true });
-    return db.prepare(sql).all();
-  } catch (error: any) {
-    throw new Error(`Messages database error: ${error.message}`);
-  } finally {
-    if (db) db.close();
-  }
-}
-
-// Contact resolution cache (phone/email → name)
-// Builds a mapping of all contact phones/emails to names
-let contactCache: Map<string, string> | null = null;
-let contactCacheTime = 0;
-const CONTACT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-// Build contact cache from Contacts SQLite database (much faster than AppleScript)
-async function buildContactCache(): Promise<Map<string, string>> {
-  const cache = new Map<string, string>();
-  const addressBookDir = `${process.env.HOME}/Library/Application Support/AddressBook/Sources`;
-
-  try {
-    // Find all source databases with timeout to prevent blocking
-    const { stdout: sources } = await Promise.race([
-      execAsync(`ls -d "${addressBookDir}"/*/ 2>/dev/null || true`),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("AddressBook access timeout")), 5000),
-      ),
-    ]);
-
-    for (const sourceDir of sources.trim().split("\n").filter(Boolean)) {
-      const dbPath = `${sourceDir}AddressBook-v22.abcddb`;
-      let db;
-
-      try {
-        db = new Database(dbPath, { readonly: true });
-
-        // Query phones with owner names
-        const phoneRows = db
-          .prepare(
-            `SELECT p.ZFULLNUMBER as phone,
-                    COALESCE(r.ZFIRSTNAME, '') || ' ' || COALESCE(r.ZLASTNAME, '') as name
-             FROM ZABCDPHONENUMBER p
-             JOIN ZABCDRECORD r ON p.ZOWNER = r.Z_PK
-             WHERE p.ZFULLNUMBER IS NOT NULL`,
-          )
-          .all() as { phone: string; name: string }[];
-
-        for (const row of phoneRows) {
-          const name = row.name.trim();
-          if (name) {
-            // Store both original and normalized
-            cache.set(row.phone.toLowerCase().trim(), name);
-            cache.set(normalizePhone(row.phone), name);
-          }
-        }
-
-        // Query emails with owner names
-        const emailRows = db
-          .prepare(
-            `SELECT e.ZADDRESSNORMALIZED as email,
-                    COALESCE(r.ZFIRSTNAME, '') || ' ' || COALESCE(r.ZLASTNAME, '') as name
-             FROM ZABCDEMAILADDRESS e
-             JOIN ZABCDRECORD r ON e.ZOWNER = r.Z_PK
-             WHERE e.ZADDRESSNORMALIZED IS NOT NULL`,
-          )
-          .all() as { email: string; name: string }[];
-
-        for (const row of emailRows) {
-          const name = row.name.trim();
-          if (name) {
-            cache.set(row.email.toLowerCase().trim(), name);
-          }
-        }
-      } catch {
-        // Skip databases that can't be opened
-      } finally {
-        if (db) db.close();
-      }
-    }
-
-    console.log(`Contact cache built: ${cache.size} entries`);
-    return cache;
-  } catch (error: any) {
-    console.error("Failed to build contact cache:", error.message);
-    return new Map();
-  }
-}
-
-// Resolve a phone/email handle to a contact name
-async function resolveHandleToName(handle: string): Promise<string> {
-  // Refresh cache if expired
-  if (!contactCache || Date.now() - contactCacheTime > CONTACT_CACHE_TTL) {
-    contactCache = await buildContactCache();
-    contactCacheTime = Date.now();
-  }
-
-  // Try exact match first
-  const lowerHandle = handle.toLowerCase().trim();
-  if (contactCache.has(lowerHandle)) {
-    return contactCache.get(lowerHandle)!;
-  }
-
-  // Try normalized phone number match
-  if (/^[\d\s\-\(\)\+]+$/.test(handle)) {
-    const normalized = normalizePhone(handle);
-    if (contactCache.has(normalized)) {
-      return contactCache.get(normalized)!;
-    }
-  }
-
-  // Return original handle if no match found
-  return handle;
-}
-
-// Resolve multiple handles at once (more efficient)
-async function resolveHandlesToNames(
-  handles: string[],
-): Promise<Map<string, string>> {
-  // Refresh cache if expired
-  if (!contactCache || Date.now() - contactCacheTime > CONTACT_CACHE_TTL) {
-    contactCache = await buildContactCache();
-    contactCacheTime = Date.now();
-  }
-
-  const result = new Map<string, string>();
-  for (const handle of handles) {
-    result.set(handle, await resolveHandleToName(handle));
-  }
-  return result;
-}
-
 // Extract phone number from WhatsApp JID (e.g., "15551234567@s.whatsapp.net" → "+15551234567")
 function phoneFromJid(jid: string): string | null {
-  const match = jid.match(/^(\d+)@/);
+  const match = jid.match(/^([\d\s()+-]+)@/);
   if (match) {
     return "+" + match[1];
   }
@@ -1230,35 +976,31 @@ type ResolveResult =
 
 // Resolve a contact identifier (name, phone, or JID) to a WhatsApp JID
 // Returns ambiguous result if multiple matches found for name searches
-async function resolveToWhatsAppJid(
-  identifier: string,
-): Promise<ResolveResult> {
+async function resolveToWhatsAppJid(identifier: string): Promise<ResolveResult> {
   const trimmed = identifier.trim();
 
   // Already a JID? Return as-is (unambiguous)
   if (trimmed.includes("@s.whatsapp.net") || trimmed.includes("@g.us")) {
     const chatMeta = await queryWhatsAppDB(
-      `SELECT name FROM chats WHERE jid = '${escapeSQL(trimmed)}'`,
+      `SELECT name FROM chats WHERE jid = '${escapeSQLLike(trimmed)}'`
     );
     return { type: "found", jid: trimmed, name: chatMeta[0]?.name || null };
   }
 
   // Phone number? Convert to JID format (unambiguous)
-  const isPhone = /^[\d\s\-\(\)\+]+$/.test(trimmed);
+  const isPhone = /^[\d\s()+-]+$/.test(trimmed);
   if (isPhone) {
     const normalized = normalizePhone(trimmed);
     const jid = `${normalized}@s.whatsapp.net`;
 
     // Try exact match first
-    let existing = await queryWhatsAppDB(
-      `SELECT jid, name FROM chats WHERE jid = '${jid}'`,
-    );
+    let existing = await queryWhatsAppDB(`SELECT jid, name FROM chats WHERE jid = '${jid}'`);
 
     // If no exact match and input looks like it lacks country code (10 digits or less),
     // try last-10-digit fallback
     if (existing.length === 0 && normalized.length <= 10) {
       existing = await queryWhatsAppDB(
-        `SELECT jid, name FROM chats WHERE jid LIKE '%${normalized.slice(-10)}@s.whatsapp.net'`,
+        `SELECT jid, name FROM chats WHERE jid LIKE '%${normalized.slice(-10)}@s.whatsapp.net'`
       );
 
       // If multiple matches, this is ambiguous
@@ -1281,19 +1023,19 @@ async function resolveToWhatsAppJid(
   }
 
   // Name search - check for multiple matches (potential ambiguity)
-  const escaped = escapeSQL(trimmed);
+  const escaped = escapeSQLLike(trimmed);
 
   // Search WhatsApp contacts by name or notify field
   const contacts = await queryWhatsAppDB(
     `SELECT jid, name, notify FROM contacts
      WHERE name LIKE '%${escaped}%' ESCAPE '\\'
         OR notify LIKE '%${escaped}%' ESCAPE '\\'
-     LIMIT 10`,
+     LIMIT 10`
   );
 
   // Search chats (includes groups)
   const chats = await queryWhatsAppDB(
-    `SELECT jid, name FROM chats WHERE name LIKE '%${escaped}%' ESCAPE '\\' LIMIT 10`,
+    `SELECT jid, name FROM chats WHERE name LIKE '%${escaped}%' ESCAPE '\\' LIMIT 10`
   );
 
   // Combine and dedupe matches
@@ -1309,22 +1051,19 @@ async function resolveToWhatsAppJid(
 
   // Also search Mac Contacts and map to WhatsApp JIDs
   // This finds contacts by name from Mac Contacts that have WhatsApp conversations
-  if (!contactCache || Date.now() - contactCacheTime > CONTACT_CACHE_TTL) {
-    contactCache = await buildContactCache();
-    contactCacheTime = Date.now();
-  }
+  const contactCache = await getContactCache();
 
   const searchLower = trimmed.toLowerCase();
   for (const [handle, name] of contactCache.entries()) {
     if (name.toLowerCase().includes(searchLower)) {
       // Check if this is a phone number we can convert to WhatsApp JID
-      const isPhone = /^[\d\s\-\(\)\+]+$/.test(handle);
+      const isPhone = /^[\d\s()+-]+$/.test(handle);
       if (isPhone) {
         const normalized = normalizePhone(handle);
         const jid = `${normalized}@s.whatsapp.net`;
         // Only add if we have a WhatsApp chat with this JID
         const existing = await queryWhatsAppDB(
-          `SELECT jid FROM chats WHERE jid = '${jid}' OR jid LIKE '%${normalized.slice(-10)}@s.whatsapp.net' LIMIT 1`,
+          `SELECT jid FROM chats WHERE jid = '${jid}' OR jid LIKE '%${normalized.slice(-10)}@s.whatsapp.net' LIMIT 1`
         );
         if (existing.length > 0 && !matchMap.has(existing[0].jid)) {
           matchMap.set(existing[0].jid, { jid: existing[0].jid, name });
@@ -1339,7 +1078,7 @@ async function resolveToWhatsAppJid(
     return { type: "not_found" };
   }
 
-  if (matches.length === 1) {
+  if (matches.length === 1 && matches[0]) {
     return { type: "found", jid: matches[0].jid, name: matches[0].name };
   }
 
@@ -1358,23 +1097,19 @@ type IMessageResolveResult =
 
 // Resolve a contact identifier (name, phone, or email) to an iMessage handle
 // Returns ambiguous result if multiple matches found for name searches
-async function resolveToIMessageHandle(
-  identifier: string,
-): Promise<IMessageResolveResult> {
+async function resolveToIMessageHandle(identifier: string): Promise<IMessageResolveResult> {
   const trimmed = identifier.trim();
 
   // Phone number or email? Return as-is (unambiguous)
-  const isPhone = /^[\d\s\-\(\)\+]+$/.test(trimmed);
+  const isPhone = /^[\d\s()+-]+$/.test(trimmed);
   const isEmail = trimmed.includes("@") && !trimmed.includes("@s.whatsapp");
   if (isPhone || isEmail) {
     // Verify handle exists in Messages DB
-    const normalized = isPhone
-      ? normalizePhone(trimmed)
-      : trimmed.toLowerCase();
-    const handles = queryMessagesDBRows(
-      `SELECT DISTINCT h.id FROM handle h WHERE h.id LIKE '%${escapeSQL(normalized)}%' ESCAPE '\\' LIMIT 1`,
+    const normalized = isPhone ? normalizePhone(trimmed) : trimmed.toLowerCase();
+    const handles = queryMessagesDBRows<{ id: string }>(
+      `SELECT DISTINCT h.id FROM handle h WHERE h.id LIKE '%${escapeSQLLike(normalized)}%' ESCAPE '\\' LIMIT 1`
     );
-    if (handles.length > 0) {
+    if (handles.length > 0 && handles[0]) {
       const name = await resolveHandleToName(handles[0].id);
       return {
         type: "found",
@@ -1387,21 +1122,12 @@ async function resolveToIMessageHandle(
   }
 
   // Name search - look up in Mac Contacts and check for multiple matches
-  // First, try to find matching contacts via contact cache
-  if (!contactCache || Date.now() - contactCacheTime > CONTACT_CACHE_TTL) {
-    contactCache = await buildContactCache();
-    contactCacheTime = Date.now();
-  }
-
-  // Search for names matching the identifier
-  const searchLower = trimmed.toLowerCase();
-  const matches: Array<{ handle: string; name: string | null }> = [];
-
-  for (const [handle, name] of contactCache.entries()) {
-    if (name.toLowerCase().includes(searchLower)) {
-      matches.push({ handle, name });
-    }
-  }
+  // Use the contacts-resolver module for cache management
+  const contactMatches = await searchContactsByName(trimmed);
+  const matches: Array<{ handle: string; name: string | null }> = contactMatches.map((m) => ({
+    handle: m.handle,
+    name: m.name,
+  }));
 
   if (matches.length === 0) {
     return { type: "not_found" };
@@ -1436,7 +1162,7 @@ async function formatMessagesWithNames(
     handleField?: "handle" | "sender" | "jid";
     dateField?: "date" | "timestamp";
     textField?: "text" | "content";
-  } = {},
+  } = {}
 ): Promise<string> {
   const {
     includeChat = false,
@@ -1453,9 +1179,7 @@ async function formatMessagesWithNames(
       // WhatsApp JIDs are digits@domain (e.g., 15551234567@s.whatsapp.net)
       // iMessage emails are regular emails (e.g., user@example.com)
       // Extract phone from WhatsApp JID, otherwise use handle as-is (including emails)
-      const phone = rawHandle.match(/^\d+@/)
-        ? phoneFromJid(rawHandle)
-        : rawHandle;
+      const phone = rawHandle.match(/^[\d\s()+-]+@/) ? phoneFromJid(rawHandle) : rawHandle;
       if (phone) {
         handleToPhone.set(rawHandle, phone);
       }
@@ -1513,7 +1237,7 @@ async function queryWhatsAppDB(sql: string): Promise<any[]> {
 async function callWhatsAppAPI(
   endpoint: string,
   method: "GET" | "POST" = "GET",
-  body?: Record<string, any>,
+  body?: Record<string, any>
 ): Promise<any> {
   try {
     const options: RequestInit = {
@@ -1549,16 +1273,12 @@ function isoToAppleScriptDate(isoDate: string): string {
 }
 
 // Operation handlers
-async function executeOperation(
-  action: string,
-  params: Record<string, any>,
-): Promise<string> {
+async function executeOperation(action: string, params: Record<string, any>): Promise<string> {
   switch (action) {
     // ============== MESSAGES ==============
     case "messages_send": {
       if (!params.to) throw new Error("Missing required parameter: to");
-      if (!params.message)
-        throw new Error("Missing required parameter: message");
+      if (!params.message) throw new Error("Missing required parameter: message");
 
       // Resolve recipient with disambiguation support
       const resolved = await resolveToIMessageHandle(params.to);
@@ -1576,7 +1296,7 @@ async function executeOperation(
             ],
           },
           null,
-          2,
+          2
         );
       }
 
@@ -1595,7 +1315,7 @@ async function executeOperation(
             pending_message: params.message,
           },
           null,
-          2,
+          2
         );
       }
 
@@ -1619,18 +1339,15 @@ async function executeOperation(
             identifier: resolved.handle,
           },
           message_preview:
-            params.message.length > 50
-              ? params.message.substring(0, 50) + "..."
-              : params.message,
+            params.message.length > 50 ? params.message.substring(0, 50) + "..." : params.message,
         },
         null,
-        2,
+        2
       );
     }
 
     case "messages_read": {
-      if (!params.contact)
-        throw new Error("Missing required parameter: contact");
+      if (!params.contact) throw new Error("Missing required parameter: contact");
 
       // Resolve contact to handle with disambiguation
       const resolved = await resolveToIMessageHandle(params.contact);
@@ -1648,7 +1365,7 @@ async function executeOperation(
             ],
           },
           null,
-          2,
+          2
         );
       }
 
@@ -1665,12 +1382,12 @@ async function executeOperation(
             })),
           },
           null,
-          2,
+          2
         );
       }
 
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const escapedContact = escapeSQL(resolved.handle);
+      const escapedContact = escapeSQLLike(resolved.handle);
       const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
         m.is_from_me,
         h.id as handle,
@@ -1688,7 +1405,7 @@ async function executeOperation(
             message: `No messages found with ${resolved.name || resolved.handle}.`,
           },
           null,
-          2,
+          2
         );
       }
       return await formatMessagesWithNames(rows);
@@ -1712,7 +1429,7 @@ async function executeOperation(
     case "messages_search": {
       if (!params.query) throw new Error("Missing required parameter: query");
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const escapedQuery = escapeSQL(params.query);
+      const escapedQuery = escapeSQLLike(params.query);
       const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
         m.is_from_me,
         h.id as handle,
@@ -1722,8 +1439,7 @@ async function executeOperation(
         WHERE m.text LIKE '%${escapedQuery}%' ESCAPE '\\'
         ORDER BY m.date DESC LIMIT ${limit}`;
       const rows = queryMessagesDBRows(sql);
-      if (rows.length === 0)
-        return `No messages found matching "${params.query}"`;
+      if (rows.length === 0) return `No messages found matching "${params.query}"`;
       return await formatMessagesWithNames(rows);
     }
 
@@ -1756,8 +1472,7 @@ async function executeOperation(
     }
 
     case "messages_conversation_context": {
-      if (!params.contact)
-        throw new Error("Missing required parameter: contact");
+      if (!params.contact) throw new Error("Missing required parameter: contact");
 
       const days = Math.min(Math.max(1, params.days || 7), 365);
       const limit = Math.min(Math.max(1, params.limit || 100), 500);
@@ -1778,7 +1493,7 @@ async function executeOperation(
             ],
           },
           null,
-          2,
+          2
         );
       }
 
@@ -1795,18 +1510,17 @@ async function executeOperation(
             })),
           },
           null,
-          2,
+          2
         );
       }
 
       const contactHandle = resolved.handle;
-      const escapedContact = escapeSQL(contactHandle);
+      const escapedContact = escapeSQLLike(contactHandle);
 
       // Apple epoch: seconds since 2001-01-01, stored as nanoseconds
       const appleEpochOffset = 978307200;
       const daysAgoTimestamp =
-        (Date.now() / 1000 - days * 24 * 60 * 60 - appleEpochOffset) *
-        1000000000;
+        (Date.now() / 1000 - days * 24 * 60 * 60 - appleEpochOffset) * 1000000000;
 
       // Get messages with attachments
       const messagesSql = `
@@ -1826,7 +1540,15 @@ async function executeOperation(
         ORDER BY m.date ASC
         LIMIT ${limit}`;
 
-      const messages = queryMessagesDBRows(messagesSql);
+      interface MessageRow {
+        message_id: number;
+        unix_timestamp: number;
+        is_from_me: number;
+        sender_id: string;
+        text: string | null;
+        attachment_id: number | null;
+      }
+      const messages = queryMessagesDBRows<MessageRow>(messagesSql);
 
       if (messages.length === 0) {
         return JSON.stringify(
@@ -1834,7 +1556,7 @@ async function executeOperation(
             error: `No messages found for "${params.contact}" in the last ${days} days`,
           },
           null,
-          2,
+          2
         );
       }
 
@@ -1857,13 +1579,19 @@ async function executeOperation(
         LEFT JOIN handle h ON m.handle_id = h.ROWID
         WHERE h.id LIKE '%${escapedContact}%' ESCAPE '\\'`;
 
-      const meta = queryMessagesDBRows(metaSql)[0];
+      interface MetaRow {
+        first_message_unix: number;
+        total_messages: number;
+        from_you: number;
+        from_them: number;
+        last_message_unix: number;
+        last_is_from_me: number;
+      }
+      const meta = queryMessagesDBRows<MetaRow>(metaSql)[0];
 
       // Get recent activity counts
-      const sevenDaysAgo =
-        (Date.now() / 1000 - 7 * 24 * 60 * 60 - appleEpochOffset) * 1000000000;
-      const thirtyDaysAgo =
-        (Date.now() / 1000 - 30 * 24 * 60 * 60 - appleEpochOffset) * 1000000000;
+      const sevenDaysAgo = (Date.now() / 1000 - 7 * 24 * 60 * 60 - appleEpochOffset) * 1000000000;
+      const thirtyDaysAgo = (Date.now() / 1000 - 30 * 24 * 60 * 60 - appleEpochOffset) * 1000000000;
 
       const recentSql = `
         SELECT
@@ -1875,23 +1603,33 @@ async function executeOperation(
         LEFT JOIN handle h ON m.handle_id = h.ROWID
         WHERE h.id LIKE '%${escapedContact}%' ESCAPE '\\'`;
 
-      const recent = queryMessagesDBRows(recentSql)[0];
+      interface RecentRow {
+        last_7_days: number;
+        last_30_days: number;
+        from_you_7d: number;
+        from_them_7d: number;
+      }
+      const recent = queryMessagesDBRows<RecentRow>(recentSql)[0];
 
       // Look up contact name using cached SQLite data (fast)
-      const contactName = await resolveHandleToName(handleId);
+      const contactName = handleId ? await resolveHandleToName(handleId) : null;
 
       // Get attachment details for messages that have them
-      const attachmentIds = messages
-        .filter((m) => m.attachment_id)
-        .map((m) => m.attachment_id);
+      const attachmentIds = messages.filter((m) => m.attachment_id).map((m) => m.attachment_id);
 
-      let attachments: Record<string, any> = {};
+      const attachments: Record<string, any> = {};
       if (attachmentIds.length > 0) {
         const attSql = `
           SELECT ROWID, filename, mime_type, transfer_name
           FROM attachment
           WHERE ROWID IN (${attachmentIds.join(",")})`;
-        const attRows = queryMessagesDBRows(attSql);
+        interface AttachmentRow {
+          ROWID: number;
+          filename: string | null;
+          mime_type: string | null;
+          transfer_name: string | null;
+        }
+        const attRows = queryMessagesDBRows<AttachmentRow>(attSql);
         for (const att of attRows) {
           attachments[att.ROWID] = {
             id: `att_${att.ROWID}`,
@@ -1926,9 +1664,7 @@ async function executeOperation(
               from_them: recent.from_them_7d || 0,
             },
             status: {
-              last_message_from: meta.last_is_from_me
-                ? "you"
-                : contactName || handleId,
+              last_message_from: meta.last_is_from_me ? "you" : contactName || handleId,
               last_message_time: formatRelativeTime(lastMessageDate),
               awaiting_your_response: !meta.last_is_from_me,
             },
@@ -1953,9 +1689,7 @@ async function executeOperation(
 
             // Add attachment if present
             if (m.attachment_id && attachments[m.attachment_id]) {
-              messageMap
-                .get(m.message_id)!
-                .attachments.push(attachments[m.attachment_id]);
+              messageMap.get(m.message_id)!.attachments.push(attachments[m.attachment_id]);
             }
           }
 
@@ -1965,9 +1699,7 @@ async function executeOperation(
               delete msg.attachments;
             } else if (!msg.content) {
               // If no text but has attachments, show attachment types
-              msg.content = msg.attachments
-                .map((a: any) => `[${a.type}]`)
-                .join(" ");
+              msg.content = msg.attachments.map((a: any) => `[${a.type}]`).join(" ");
             }
             return msg;
           });
@@ -1981,11 +1713,9 @@ async function executeOperation(
       if (!params.id) throw new Error("Missing required parameter: id");
 
       // Parse attachment ID (format: att_12345)
-      const match = params.id.match(/^att_(\d+)$/);
+      const match = params.id.match(/^att_([\d\s()+-]+)$/);
       if (!match) {
-        throw new Error(
-          `Invalid attachment ID format: ${params.id}. Expected format: att_12345`,
-        );
+        throw new Error(`Invalid attachment ID format: ${params.id}. Expected format: att_12345`);
       }
       const rowId = match[1];
 
@@ -1994,12 +1724,19 @@ async function executeOperation(
         FROM attachment
         WHERE ROWID = ${rowId}`;
 
-      const rows = queryMessagesDBRows(sql);
+      interface AttachmentDetailRow {
+        ROWID: number;
+        filename: string | null;
+        mime_type: string | null;
+        transfer_name: string | null;
+        total_bytes: number | null;
+      }
+      const rows = queryMessagesDBRows<AttachmentDetailRow>(sql);
       if (rows.length === 0) {
         throw new Error(`Attachment not found: ${params.id}`);
       }
 
-      const att = rows[0];
+      const att = rows[0]!;
       // Attachment filenames start with ~/ which needs expansion
       const filePath = att.filename?.startsWith("~/")
         ? att.filename.replace("~", process.env.HOME || "")
@@ -2015,7 +1752,7 @@ async function executeOperation(
           path: filePath,
         },
         null,
-        2,
+        2
       );
     }
 
@@ -2110,9 +1847,7 @@ async function executeOperation(
 
     // ============== REMINDERS ==============
     case "reminders_list": {
-      const completedFilter = params.includeCompleted
-        ? ""
-        : "whose completed is false";
+      const completedFilter = params.includeCompleted ? "" : "whose completed is false";
 
       let script: string;
       if (params.list) {
@@ -2185,9 +1920,7 @@ async function executeOperation(
     case "reminders_complete": {
       if (!params.title) throw new Error("Missing required parameter: title");
       const escapedTitle = escapeAppleScript(params.title);
-      const listFilter = params.list
-        ? `of list "${escapeAppleScript(params.list)}"`
-        : "";
+      const listFilter = params.list ? `of list "${escapeAppleScript(params.list)}"` : "";
       const script = `tell application "Reminders"
         set matchingReminders to (reminders ${listFilter} whose name contains "${escapedTitle}" and completed is false)
         if (count of matchingReminders) = 0 then
@@ -2287,30 +2020,25 @@ async function executeOperation(
 
       try {
         // Check for uncommitted changes before pulling
-        const { stdout: dirtyCheck } = await execAsync(
-          "git status --porcelain",
-          {
-            cwd: process.cwd(),
-          },
-        );
+        const { stdout: dirtyCheck } = await execAsync("git status --porcelain", {
+          cwd: process.cwd(),
+        });
         if (dirtyCheck.trim()) {
           updateInProgress = false;
           return "Cannot update: uncommitted local changes detected. Commit or stash changes first.";
         }
 
         // Get current commit
-        const { stdout: beforeCommit } = await execAsync(
-          "git rev-parse --short HEAD",
-          { cwd: process.cwd() },
-        );
+        const { stdout: beforeCommit } = await execAsync("git rev-parse --short HEAD", {
+          cwd: process.cwd(),
+        });
         results.push(`Before: ${beforeCommit.trim()}`);
 
         // Fetch and check for updates
         await execAsync("git fetch", { cwd: process.cwd() });
-        const { stdout: behind } = await execAsync(
-          "git rev-list HEAD..origin/main --count",
-          { cwd: process.cwd() },
-        );
+        const { stdout: behind } = await execAsync("git rev-list HEAD..origin/main --count", {
+          cwd: process.cwd(),
+        });
 
         if (behind.trim() === "0") {
           updateInProgress = false;
@@ -2336,25 +2064,21 @@ async function executeOperation(
         }
 
         // Get new commit
-        const { stdout: afterCommit } = await execAsync(
-          "git rev-parse --short HEAD",
-          { cwd: process.cwd() },
-        );
+        const { stdout: afterCommit } = await execAsync("git rev-parse --short HEAD", {
+          cwd: process.cwd(),
+        });
         results.push(`After: ${afterCommit.trim()}`);
 
         // Validate commit hashes (prevent shell injection)
         const commitRegex = /^[a-f0-9]+$/i;
-        if (
-          !commitRegex.test(beforeCommit.trim()) ||
-          !commitRegex.test(afterCommit.trim())
-        ) {
+        if (!commitRegex.test(beforeCommit.trim()) || !commitRegex.test(afterCommit.trim())) {
           throw new Error("Invalid commit hash format");
         }
 
         // Get changelog using validated commits
         const { stdout: changelog } = await execAsync(
           `git log ${beforeCommit.trim()}..${afterCommit.trim()} --oneline`,
-          { cwd: process.cwd() },
+          { cwd: process.cwd() }
         );
         if (changelog.trim()) {
           results.push(`\nChanges:\n${changelog.trim()}`);
@@ -2421,16 +2145,12 @@ async function executeOperation(
       const status: string[] = [];
 
       try {
-        const { stdout: commit } = await execAsync(
-          "git rev-parse --short HEAD",
-          {
-            cwd: process.cwd(),
-          },
-        );
-        const { stdout: branch } = await execAsync(
-          "git rev-parse --abbrev-ref HEAD",
-          { cwd: process.cwd() },
-        );
+        const { stdout: commit } = await execAsync("git rev-parse --short HEAD", {
+          cwd: process.cwd(),
+        });
+        const { stdout: branch } = await execAsync("git rev-parse --abbrev-ref HEAD", {
+          cwd: process.cwd(),
+        });
 
         status.push(`Version: 1.1.0`);
         status.push(`Commit: ${commit.trim()}`);
@@ -2439,12 +2159,11 @@ async function executeOperation(
         // Check if behind remote (optional - don't fail if network unavailable)
         try {
           await execAsync("git fetch", { cwd: process.cwd() });
-          const { stdout: behind } = await execAsync(
-            "git rev-list HEAD..origin/main --count",
-            { cwd: process.cwd() },
-          );
+          const { stdout: behind } = await execAsync("git rev-list HEAD..origin/main --count", {
+            cwd: process.cwd(),
+          });
           status.push(
-            `Updates available: ${behind.trim() === "0" ? "No" : `Yes (${behind.trim()} commits behind)`}`,
+            `Updates available: ${behind.trim() === "0" ? "No" : `Yes (${behind.trim()} commits behind)`}`
           );
         } catch {
           status.push("Updates available: Unknown (network unavailable)");
@@ -2467,8 +2186,7 @@ async function executeOperation(
 
     case "whatsapp_send": {
       if (!params.to) throw new Error("Missing required parameter: to");
-      if (!params.message)
-        throw new Error("Missing required parameter: message");
+      if (!params.message) throw new Error("Missing required parameter: message");
 
       // Resolve recipient with disambiguation support
       const resolved = await resolveToWhatsAppJid(params.to);
@@ -2486,7 +2204,7 @@ async function executeOperation(
             ],
           },
           null,
-          2,
+          2
         );
       }
 
@@ -2505,7 +2223,7 @@ async function executeOperation(
             pending_message: params.message,
           },
           null,
-          2,
+          2
         );
       }
 
@@ -2525,12 +2243,10 @@ async function executeOperation(
             },
             message_id: result.message_id,
             message_preview:
-              params.message.length > 50
-                ? params.message.substring(0, 50) + "..."
-                : params.message,
+              params.message.length > 50 ? params.message.substring(0, 50) + "..." : params.message,
           },
           null,
-          2,
+          2
         );
       } else {
         throw new Error(result.error || "Failed to send message");
@@ -2543,7 +2259,7 @@ async function executeOperation(
         FROM chats ORDER BY last_message_time DESC LIMIT ${limit}`;
 
       if (params.query) {
-        const escaped = escapeSQL(params.query);
+        const escaped = escapeSQLLike(params.query);
         sql = `SELECT jid, name, last_message_time
           FROM chats WHERE name LIKE '%${escaped}%' ESCAPE '\\' OR jid LIKE '%${escaped}%' ESCAPE '\\'
           ORDER BY last_message_time DESC LIMIT ${limit}`;
@@ -2581,7 +2297,7 @@ async function executeOperation(
           const typeIndicator = isGroup ? "📱 Group" : "👤";
 
           return `${typeIndicator} ${name}\n  JID: ${r.jid}\n  Last: ${lastActivity}`;
-        }),
+        })
       );
 
       return formattedChats.join("\n\n");
@@ -2608,7 +2324,7 @@ async function executeOperation(
             ],
           },
           null,
-          2,
+          2
         );
       }
       if (resolved.type === "ambiguous") {
@@ -2625,12 +2341,12 @@ async function executeOperation(
             })),
           },
           null,
-          2,
+          2
         );
       }
 
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const escaped = escapeSQL(resolved.jid);
+      const escaped = escapeSQLLike(resolved.jid);
 
       const sql = `SELECT timestamp,
         is_from_me,
@@ -2653,7 +2369,7 @@ async function executeOperation(
     case "whatsapp_search": {
       if (!params.query) throw new Error("Missing required parameter: query");
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const escaped = escapeSQL(params.query);
+      const escaped = escapeSQLLike(params.query);
 
       const sql = `SELECT m.timestamp,
         m.is_from_me,
@@ -2666,8 +2382,7 @@ async function executeOperation(
         ORDER BY m.timestamp DESC LIMIT ${limit}`;
 
       const rows = await queryWhatsAppDB(sql);
-      if (rows.length === 0)
-        return `No messages found matching: ${params.query}`;
+      if (rows.length === 0) return `No messages found matching: ${params.query}`;
 
       return await formatMessagesWithNames(rows, {
         handleField: "sender",
@@ -2680,10 +2395,10 @@ async function executeOperation(
     case "whatsapp_contacts": {
       if (!params.query) throw new Error("Missing required parameter: query");
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const escaped = escapeSQL(params.query);
+      const escaped = escapeSQLLike(params.query);
 
       // Check if query looks like a phone number
-      const isPhoneQuery = /^[\d\s\-\(\)\+]+$/.test(params.query.trim());
+      const isPhoneQuery = /^[\d\s()+-]+$/.test(params.query.trim());
 
       let sql: string;
       if (isPhoneQuery) {
@@ -2733,7 +2448,7 @@ async function executeOperation(
           const typeIndicator = isGroup ? "📱" : "👤";
           const name = displayName || phoneFromJid(r.jid) || "Unknown";
           return `${typeIndicator} ${name} (${r.jid})`;
-        }),
+        })
       );
 
       return enhanced.join("\n");
@@ -2760,7 +2475,7 @@ async function executeOperation(
             ],
           },
           null,
-          2,
+          2
         );
       }
       if (resolved.type === "ambiguous") {
@@ -2776,25 +2491,21 @@ async function executeOperation(
             })),
           },
           null,
-          2,
+          2
         );
       }
 
       const chatJid = resolved.jid;
       const days = Math.min(Math.max(1, params.days || 7), 365);
       const limit = Math.min(Math.max(1, params.limit || 100), 500);
-      const escaped = escapeSQL(chatJid);
+      const escaped = escapeSQLLike(chatJid);
       const isGroup = chatJid.includes("@g.us");
 
       // Calculate ISO timestamp for time windows
       const daysAgo = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
       const daysAgoISO = daysAgo.toISOString();
-      const sevenDaysAgo = new Date(
-        Date.now() - 7 * 24 * 60 * 60 * 1000,
-      ).toISOString();
-      const thirtyDaysAgo = new Date(
-        Date.now() - 30 * 24 * 60 * 60 * 1000,
-      ).toISOString();
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
       // Get messages for the requested window
       const messagesSql = `
@@ -2813,7 +2524,7 @@ async function executeOperation(
             error: `No messages found for "${identifier}" in the last ${days} days`,
           },
           null,
-          2,
+          2
         );
       }
 
@@ -2865,9 +2576,7 @@ async function executeOperation(
 
       // Resolve sender names for group messages
       const senderJids = [
-        ...new Set(
-          messages.filter((m: any) => !m.is_from_me).map((m: any) => m.sender),
-        ),
+        ...new Set(messages.filter((m: any) => !m.is_from_me).map((m: any) => m.sender)),
       ];
       const senderNames = new Map<string, string>();
       for (const jid of senderJids) {
@@ -2883,12 +2592,8 @@ async function executeOperation(
       }
 
       // Format dates
-      const firstMsgDate = allTimeStats.first_message
-        ? new Date(allTimeStats.first_message)
-        : null;
-      const lastMsgDate = allTimeStats.last_message
-        ? new Date(allTimeStats.last_message)
-        : null;
+      const firstMsgDate = allTimeStats.first_message ? new Date(allTimeStats.first_message) : null;
+      const lastMsgDate = allTimeStats.last_message ? new Date(allTimeStats.last_message) : null;
 
       // Determine who sent the last message
       let lastMessageFrom = "unknown";
@@ -2932,9 +2637,7 @@ async function executeOperation(
             },
             status: {
               last_message_from: lastMessageFrom,
-              last_message_time: lastMsgDate
-                ? formatRelativeTime(lastMsgDate)
-                : "unknown",
+              last_message_time: lastMsgDate ? formatRelativeTime(lastMsgDate) : "unknown",
               awaiting_your_response: lastMsg ? !lastMsg.is_from_me : false,
             },
           },
@@ -2969,9 +2672,7 @@ async function executeOperation(
       // Only allow SELECT queries (read-only)
       const normalizedSql = params.sql.trim().toLowerCase();
       if (!normalizedSql.startsWith("select")) {
-        throw new Error(
-          "Only SELECT queries are allowed. WhatsApp raw_sql is read-only.",
-        );
+        throw new Error("Only SELECT queries are allowed. WhatsApp raw_sql is read-only.");
       }
 
       // Block dangerous keywords using word boundaries to avoid false positives
@@ -2992,7 +2693,7 @@ async function executeOperation(
         const regex = new RegExp(`\\b${keyword}\\b`, "i");
         if (regex.test(normalizedSql)) {
           throw new Error(
-            `Query contains forbidden keyword: ${keyword}. WhatsApp raw_sql is read-only.`,
+            `Query contains forbidden keyword: ${keyword}. WhatsApp raw_sql is read-only.`
           );
         }
       }
@@ -3013,16 +2714,13 @@ async function executeOperation(
 
     default:
       throw new Error(
-        `Unknown operation: ${action}\n\nUse action='describe' to see available operations.`,
+        `Unknown operation: ${action}\n\nUse action='describe' to see available operations.`
       );
   }
 }
 
 // Handle a service tool call (mcp-hubby pattern: one tool per service)
-async function handleServiceTool(
-  serviceName: string,
-  args: Record<string, any>,
-): Promise<string> {
+async function handleServiceTool(serviceName: string, args: Record<string, any>): Promise<string> {
   const service = services.find((s) => s.name === serviceName);
   if (!service) {
     return `Unknown service: ${serviceName}`;
@@ -3070,7 +2768,7 @@ function authenticate(req: Request, res: Response, next: NextFunction) {
 function createServer(): Server {
   const server = new Server(
     { name: "machina", version: VERSION },
-    { capabilities: { tools: { listChanged: false } } },
+    { capabilities: { tools: { listChanged: false } } }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -3122,7 +2820,7 @@ app.use(express.json());
 // Request logging middleware
 app.use((req, _res, next) => {
   console.log(
-    `${new Date().toISOString()} ${req.method} ${req.path} - Headers: ${JSON.stringify(req.headers)}`,
+    `${new Date().toISOString()} ${req.method} ${req.path} - Headers: ${JSON.stringify(req.headers)}`
   );
   next();
 });

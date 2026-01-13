@@ -21,8 +21,7 @@ const checks = [
   },
   {
     name: "Messages (read)",
-    command:
-      "sqlite3 ~/Library/Messages/chat.db 'SELECT COUNT(*) FROM message LIMIT 1'",
+    command: "sqlite3 ~/Library/Messages/chat.db 'SELECT COUNT(*) FROM message LIMIT 1'",
   },
   {
     name: "Notes",
@@ -34,16 +33,10 @@ const checks = [
   },
 ];
 
-async function triggerPermission(check: {
-  name: string;
-  script?: string;
-  command?: string;
-}) {
+async function triggerPermission(check: { name: string; script?: string; command?: string }) {
   try {
     if (check.script) {
-      await execAsync(
-        `osascript -e '${check.script.replace(/'/g, "'\"'\"'")}'`,
-      );
+      await execAsync(`osascript -e '${check.script.replace(/'/g, "'\"'\"'")}'`);
     } else if (check.command) {
       await execAsync(check.command);
     }

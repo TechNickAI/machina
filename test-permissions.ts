@@ -14,11 +14,10 @@ console.log("Testing all macOS permissions for Machina...\n");
 // Test 1: Messages database access (requires Full Disk Access)
 console.log("1. Testing Messages database access (requires Full Disk Access)...");
 try {
-  const messagesDb = Database(
-    `${process.env.HOME}/Library/Messages/chat.db`,
-    { readonly: true }
-  );
-  const result = messagesDb.prepare("SELECT COUNT(*) as count FROM message").get() as { count: number };
+  const messagesDb = Database(`${process.env.HOME}/Library/Messages/chat.db`, { readonly: true });
+  const result = messagesDb.prepare("SELECT COUNT(*) as count FROM message").get() as {
+    count: number;
+  };
   console.log(`✓ Messages DB accessible: ${result.count} messages\n`);
   messagesDb.close();
 } catch (error: any) {
@@ -75,7 +74,9 @@ console.log("6. Testing WhatsApp database access...");
 try {
   const whatsappDbPath = `${process.env.HOME}/machina/components/whatsapp-mcp-ts/data/whatsapp.db`;
   const whatsappDb = Database(whatsappDbPath, { readonly: true });
-  const result = whatsappDb.prepare("SELECT COUNT(*) as count FROM messages").get() as { count: number };
+  const result = whatsappDb.prepare("SELECT COUNT(*) as count FROM messages").get() as {
+    count: number;
+  };
   console.log(`✓ WhatsApp DB accessible: ${result.count} messages\n`);
   whatsappDb.close();
 } catch (error: any) {
