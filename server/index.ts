@@ -1533,7 +1533,9 @@ async function executeOperation(
 
       const days = Math.min(Math.max(1, params.days || 7), 365);
       const limit = Math.min(Math.max(1, params.limit || 100), 500);
-      const escaped = escapeSQL(params.chatJid);
+      // Coerce to string for consistency with whatsapp_send
+      const chatJid = String(params.chatJid);
+      const escaped = escapeSQL(chatJid);
 
       // Calculate timestamp for N days ago (WhatsApp uses Unix seconds)
       const daysAgoTimestamp =
@@ -1594,8 +1596,8 @@ async function executeOperation(
       const context = {
         conversation: {
           name: chatName,
-          jid: params.chatJid,
-          type: params.chatJid.includes("@g.us") ? "group" : "individual",
+          jid: chatJid,
+          type: chatJid.includes("@g.us") ? "group" : "individual",
         },
         metadata: {
           days_included: days,
