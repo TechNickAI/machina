@@ -1416,7 +1416,8 @@ async function executeOperation(
         throw new Error("Missing required parameter: message");
 
       // Validate JID format - help users who try to use phone numbers directly
-      const to = params.to.trim();
+      // Coerce to string first to handle numeric inputs gracefully
+      const to = String(params.to).trim();
       if (!to.includes("@")) {
         throw new Error(
           `Invalid recipient format: "${to}". WhatsApp requires a JID, not a phone number.\n\n` +

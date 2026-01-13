@@ -168,9 +168,9 @@ Phone numbers don't work directly - must use JID format.
 
 ## Troubleshooting
 
-| Symptom                | Cause                            | Fix                            |
-| ---------------------- | -------------------------------- | ------------------------------ | -------------- |
-| `status: disconnected` | Session expired or phone offline | Re-scan QR code                |
-| Messages not appearing | Service not running              | Check `launchctl list          | grep whatsapp` |
-| Old messages missing   | Historical sync incomplete       | Wait for initial sync (~5 min) |
-| Send fails             | Phone app force-closed           | Open WhatsApp on phone         |
+| Symptom                | Cause                            | Fix                                     |
+| ---------------------- | -------------------------------- | --------------------------------------- |
+| `status: disconnected` | Session expired or phone offline | Re-scan QR code                         |
+| Messages not appearing | Service not running              | Check `launchctl list \| grep whatsapp` |
+| Old messages missing   | Historical sync incomplete       | Wait for initial sync (~5 min)          |
+| Send fails             | Phone app force-closed           | Open WhatsApp on phone                  |
