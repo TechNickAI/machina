@@ -1417,9 +1417,16 @@ async function resolveToIMessageHandle(identifier: string): Promise<IMessageReso
   const searchLower = trimmed.toLowerCase();
   const matches: Array<{ handle: string; name: string | null }> = [];
 
+  // Deduplicate by name since cache stores both original and normalized phone numbers
+  const seenNames = new Set<string>();
+
   for (const [handle, name] of contactCache.entries()) {
     if (name.toLowerCase().includes(searchLower)) {
-      matches.push({ handle, name });
+      const nameLower = name.toLowerCase();
+      if (!seenNames.has(nameLower)) {
+        seenNames.add(nameLower);
+        matches.push({ handle, name });
+      }
     }
   }
 
@@ -1884,7 +1891,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       const recent = queryMessagesDBRows(recentSql)[0];
 
       // Look up contact name using cached SQLite data (fast)
-      const contactName = await resolveHandleToName(handleId);
+      const contactName = handleId ? await resolveHandleToName(handleId) : null;
 
       // Get attachment details for messages that have them
       const attachmentIds = messages.filter((m) => m.attachment_id).map((m) => m.attachment_id);
