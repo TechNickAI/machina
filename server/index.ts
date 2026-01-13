@@ -71,13 +71,17 @@ const operations: Operation[] = [
   // ============== MESSAGES ==============
   {
     name: "messages_send",
-    description: "Send an iMessage to a contact",
+    description:
+      "Send an iMessage to a contact. Accepts contact name, phone number, or email. " +
+      "Returns disambiguation options if multiple contacts match.",
     parameters: [
       {
         name: "to",
         type: "string",
         required: true,
-        description: "Phone number (e.g., +15551234567) or email address",
+        description:
+          "Recipient: name ('John'), phone number ('+15551234567'), or email. " +
+          "If multiple contacts match a name, returns options to choose from.",
       },
       {
         name: "message",
@@ -86,9 +90,10 @@ const operations: Operation[] = [
         description: "Message text to send",
       },
     ],
-    returns: "Confirmation message",
+    returns:
+      "Structured response: success confirmation or disambiguation options",
     example:
-      "machina(action='messages_send', params={to: '+15551234567', message: 'Hello!'})",
+      "machina(action='messages_send', params={to: 'Mom', message: 'Hello!'})",
   },
   {
     name: "messages_read",
@@ -449,21 +454,20 @@ const operations: Operation[] = [
   // WhatsApp uses JIDs (Jabber IDs) to identify users and groups:
   // - Individual: 15551234567@s.whatsapp.net (country code + number)
   // - Group: 120363023456789@g.us
-  // Phone numbers alone don't work - use contacts/chats to discover JIDs first.
+  // Accepts names, phone numbers, or JIDs - automatic resolution with disambiguation
   {
     name: "whatsapp_send",
     description:
-      "Send a WhatsApp message to a contact or group. Requires a JID (not a phone number). " +
-      "To find someone's JID: use whatsapp_contacts(query='name') first. " +
-      "To find a group JID: use whatsapp_chats() first.",
+      "Send a WhatsApp message to a contact or group. Accepts contact name, phone number, or JID. " +
+      "Returns disambiguation options if multiple contacts match.",
     parameters: [
       {
         name: "to",
         type: "string",
         required: true,
         description:
-          "Recipient JID. Individual: '15551234567@s.whatsapp.net', Group: '120363...@g.us'. " +
-          "Use whatsapp_contacts or whatsapp_chats to discover JIDs.",
+          "Recipient: name ('John'), phone number ('+15551234567'), or JID. " +
+          "If multiple contacts match a name, returns options to choose from.",
       },
       {
         name: "message",
@@ -472,9 +476,10 @@ const operations: Operation[] = [
         description: "Message text to send",
       },
     ],
-    returns: "Confirmation with message ID",
+    returns:
+      "Structured response: success confirmation or disambiguation options",
     example:
-      "machina(action='whatsapp_send', params={to: '15551234567@s.whatsapp.net', message: 'Hello!'})",
+      "machina(action='whatsapp_send', params={to: 'John', message: 'Hello!'})",
   },
   {
     name: "whatsapp_chats",
@@ -502,15 +507,15 @@ const operations: Operation[] = [
   {
     name: "whatsapp_messages",
     description:
-      "Read messages from a specific WhatsApp chat. Get the JID from whatsapp_chats or " +
-      "whatsapp_contacts first. Returns messages in chronological order with sender identification.",
+      "Read messages from a specific WhatsApp chat. Accepts contact name, phone number, or JID. " +
+      "Returns messages in chronological order with sender identification.",
     parameters: [
       {
-        name: "chatJid",
+        name: "contact",
         type: "string",
         required: true,
         description:
-          "Chat JID from whatsapp_chats or whatsapp_contacts (e.g., '15551234567@s.whatsapp.net')",
+          "Contact name, phone number, or JID (e.g., 'John', '(831) 334-6265', '15551234567@s.whatsapp.net')",
       },
       {
         name: "limit",
@@ -523,7 +528,7 @@ const operations: Operation[] = [
     returns:
       "Messages with timestamp, sender (Me or contact name), and content",
     example:
-      "machina(action='whatsapp_messages', params={chatJid: '15551234567@s.whatsapp.net', limit: 50})",
+      "machina(action='whatsapp_messages', params={contact: 'John', limit: 50})",
   },
   {
     name: "whatsapp_search",
@@ -576,16 +581,16 @@ const operations: Operation[] = [
   {
     name: "whatsapp_chat_context",
     description:
-      "Get a WhatsApp conversation formatted for LLM analysis. Returns messages in a structured format " +
-      "with clear identification of who sent each message (you vs others), conversation metadata, " +
-      "and message counts. Ideal for AI assistants analyzing message history.",
+      "Get a WhatsApp conversation formatted for LLM analysis. Accepts contact name, phone, or JID. " +
+      "Returns messages with clear identification of who sent each message (you vs others), " +
+      "conversation metadata, and message counts. Ideal for AI assistants analyzing message history.",
     parameters: [
       {
-        name: "chatJid",
+        name: "contact",
         type: "string",
         required: true,
         description:
-          "Chat JID from whatsapp_chats or whatsapp_contacts (e.g., '15551234567@s.whatsapp.net')",
+          "Contact name, phone number, or JID (e.g., 'John', '(831) 334-6265', '15551234567@s.whatsapp.net')",
       },
       {
         name: "days",
@@ -605,7 +610,7 @@ const operations: Operation[] = [
     returns:
       "JSON object with conversation metadata and messages array in LLM-friendly format",
     example:
-      "machina(action='whatsapp_chat_context', params={chatJid: '15551234567@s.whatsapp.net', days: 7})",
+      "machina(action='whatsapp_chat_context', params={contact: 'John', days: 7})",
   },
   {
     name: "whatsapp_status",
@@ -701,10 +706,11 @@ function stripPrefix(opName: string, prefix: string): string {
 const serviceWorkflows: Record<string, string[]> = {
   whatsapp: [
     "\nCommon workflows:",
-    "  • Message someone: contacts(query='name') → send(to='<jid>', message='...')",
-    "  • Read a chat: chats() → messages(chatJid='<jid>')",
-    "  • AI analysis: chats() → chat_context(chatJid='<jid>', days=7)",
-    "\nNote: WhatsApp uses JIDs (e.g., '15551234567@s.whatsapp.net'), not phone numbers.",
+    "  • Message someone by name: messages(contact='John') or chat_context(contact='John')",
+    "  • Message by phone: messages(contact='(831) 334-6265')",
+    "  • Find contacts: contacts(query='name') → shows JIDs for messaging",
+    "  • AI analysis: chat_context(contact='John', days=7) → rich conversation context",
+    "\nFlexible input: Use contact names, phone numbers, or JIDs - all work.",
   ],
 };
 
@@ -1216,6 +1222,199 @@ function phoneFromJid(jid: string): string | null {
   return null;
 }
 
+// Result types for contact resolution
+type ResolveResult =
+  | { type: "found"; jid: string; name: string | null }
+  | { type: "ambiguous"; matches: Array<{ jid: string; name: string | null }> }
+  | { type: "not_found" };
+
+// Resolve a contact identifier (name, phone, or JID) to a WhatsApp JID
+// Returns ambiguous result if multiple matches found for name searches
+async function resolveToWhatsAppJid(
+  identifier: string,
+): Promise<ResolveResult> {
+  const trimmed = identifier.trim();
+
+  // Already a JID? Return as-is (unambiguous)
+  if (trimmed.includes("@s.whatsapp.net") || trimmed.includes("@g.us")) {
+    const chatMeta = await queryWhatsAppDB(
+      `SELECT name FROM chats WHERE jid = '${escapeSQL(trimmed)}'`,
+    );
+    return { type: "found", jid: trimmed, name: chatMeta[0]?.name || null };
+  }
+
+  // Phone number? Convert to JID format (unambiguous)
+  const isPhone = /^[\d\s\-\(\)\+]+$/.test(trimmed);
+  if (isPhone) {
+    const normalized = normalizePhone(trimmed);
+    const jid = `${normalized}@s.whatsapp.net`;
+
+    // Try exact match first
+    let existing = await queryWhatsAppDB(
+      `SELECT jid, name FROM chats WHERE jid = '${jid}'`,
+    );
+
+    // If no exact match and input looks like it lacks country code (10 digits or less),
+    // try last-10-digit fallback
+    if (existing.length === 0 && normalized.length <= 10) {
+      existing = await queryWhatsAppDB(
+        `SELECT jid, name FROM chats WHERE jid LIKE '%${normalized.slice(-10)}@s.whatsapp.net'`,
+      );
+
+      // If multiple matches, this is ambiguous
+      if (existing.length > 1) {
+        return {
+          type: "ambiguous",
+          matches: existing.map((row: any) => ({
+            jid: row.jid,
+            name: row.name,
+          })),
+        };
+      }
+    }
+
+    if (existing.length > 0) {
+      return { type: "found", jid: existing[0].jid, name: existing[0].name };
+    }
+    // No existing chat, but return the constructed JID anyway (for sending)
+    return { type: "found", jid, name: null };
+  }
+
+  // Name search - check for multiple matches (potential ambiguity)
+  const escaped = escapeSQL(trimmed);
+
+  // Search WhatsApp contacts by name or notify field
+  const contacts = await queryWhatsAppDB(
+    `SELECT jid, name, notify FROM contacts
+     WHERE name LIKE '%${escaped}%' ESCAPE '\\'
+        OR notify LIKE '%${escaped}%' ESCAPE '\\'
+     LIMIT 10`,
+  );
+
+  // Search chats (includes groups)
+  const chats = await queryWhatsAppDB(
+    `SELECT jid, name FROM chats WHERE name LIKE '%${escaped}%' ESCAPE '\\' LIMIT 10`,
+  );
+
+  // Combine and dedupe matches
+  const matchMap = new Map<string, { jid: string; name: string | null }>();
+  for (const c of contacts) {
+    matchMap.set(c.jid, { jid: c.jid, name: c.name || c.notify });
+  }
+  for (const c of chats) {
+    if (!matchMap.has(c.jid)) {
+      matchMap.set(c.jid, { jid: c.jid, name: c.name });
+    }
+  }
+
+  // Also search Mac Contacts and map to WhatsApp JIDs
+  // This finds contacts by name from Mac Contacts that have WhatsApp conversations
+  if (!contactCache || Date.now() - contactCacheTime > CONTACT_CACHE_TTL) {
+    contactCache = await buildContactCache();
+    contactCacheTime = Date.now();
+  }
+
+  const searchLower = trimmed.toLowerCase();
+  for (const [handle, name] of contactCache.entries()) {
+    if (name.toLowerCase().includes(searchLower)) {
+      // Check if this is a phone number we can convert to WhatsApp JID
+      const isPhone = /^[\d\s\-\(\)\+]+$/.test(handle);
+      if (isPhone) {
+        const normalized = normalizePhone(handle);
+        const jid = `${normalized}@s.whatsapp.net`;
+        // Only add if we have a WhatsApp chat with this JID
+        const existing = await queryWhatsAppDB(
+          `SELECT jid FROM chats WHERE jid = '${jid}' OR jid LIKE '%${normalized.slice(-10)}@s.whatsapp.net' LIMIT 1`,
+        );
+        if (existing.length > 0 && !matchMap.has(existing[0].jid)) {
+          matchMap.set(existing[0].jid, { jid: existing[0].jid, name });
+        }
+      }
+    }
+  }
+
+  const matches = Array.from(matchMap.values());
+
+  if (matches.length === 0) {
+    return { type: "not_found" };
+  }
+
+  if (matches.length === 1) {
+    return { type: "found", jid: matches[0].jid, name: matches[0].name };
+  }
+
+  // Multiple matches - return ambiguous result
+  return { type: "ambiguous", matches };
+}
+
+// Result type for iMessage contact resolution
+type IMessageResolveResult =
+  | { type: "found"; handle: string; name: string | null }
+  | {
+      type: "ambiguous";
+      matches: Array<{ handle: string; name: string | null }>;
+    }
+  | { type: "not_found" };
+
+// Resolve a contact identifier (name, phone, or email) to an iMessage handle
+// Returns ambiguous result if multiple matches found for name searches
+async function resolveToIMessageHandle(
+  identifier: string,
+): Promise<IMessageResolveResult> {
+  const trimmed = identifier.trim();
+
+  // Phone number or email? Return as-is (unambiguous)
+  const isPhone = /^[\d\s\-\(\)\+]+$/.test(trimmed);
+  const isEmail = trimmed.includes("@") && !trimmed.includes("@s.whatsapp");
+  if (isPhone || isEmail) {
+    // Verify handle exists in Messages DB
+    const normalized = isPhone
+      ? normalizePhone(trimmed)
+      : trimmed.toLowerCase();
+    const handles = queryMessagesDBRows(
+      `SELECT DISTINCT h.id FROM handle h WHERE h.id LIKE '%${escapeSQL(normalized)}%' ESCAPE '\\' LIMIT 1`,
+    );
+    if (handles.length > 0) {
+      const name = await resolveHandleToName(handles[0].id);
+      return {
+        type: "found",
+        handle: handles[0].id,
+        name: name !== handles[0].id ? name : null,
+      };
+    }
+    // No existing handle, but return the input anyway (might still work)
+    return { type: "found", handle: trimmed, name: null };
+  }
+
+  // Name search - look up in Mac Contacts and check for multiple matches
+  // First, try to find matching contacts via contact cache
+  if (!contactCache || Date.now() - contactCacheTime > CONTACT_CACHE_TTL) {
+    contactCache = await buildContactCache();
+    contactCacheTime = Date.now();
+  }
+
+  // Search for names matching the identifier
+  const searchLower = trimmed.toLowerCase();
+  const matches: Array<{ handle: string; name: string | null }> = [];
+
+  for (const [handle, name] of contactCache.entries()) {
+    if (name.toLowerCase().includes(searchLower)) {
+      matches.push({ handle, name });
+    }
+  }
+
+  if (matches.length === 0) {
+    return { type: "not_found" };
+  }
+
+  if (matches.length === 1) {
+    return { type: "found", handle: matches[0].handle, name: matches[0].name };
+  }
+
+  // Multiple matches - return ambiguous result
+  return { type: "ambiguous", matches };
+}
+
 // Format message rows with resolved contact names
 // Works for both iMessage and WhatsApp - DRY helper
 interface MessageRowInput {
@@ -1361,22 +1560,46 @@ async function executeOperation(
       if (!params.message)
         throw new Error("Missing required parameter: message");
 
-      const to = params.to.trim();
+      // Resolve recipient with disambiguation support
+      const resolved = await resolveToIMessageHandle(params.to);
 
-      // Validate: must be phone number or email, not a name
-      const isPhone =
-        /^[\d\s\-\(\)\+]+$/.test(to) && to.replace(/\D/g, "").length >= 10;
-      const isEmail = to.includes("@") && to.includes(".");
-
-      if (!isPhone && !isEmail) {
-        throw new Error(
-          `Invalid 'to' format: "${to}" looks like a name, not a phone number or email. ` +
-            `Use contacts_search to look up the contact first, then use their phone number ` +
-            `(e.g., +15551234567) or email address.`,
+      if (resolved.type === "not_found") {
+        return JSON.stringify(
+          {
+            not_found: true,
+            query: params.to,
+            message: `No contact found for "${params.to}".`,
+            suggestions: [
+              "Check the spelling of the contact name",
+              "Use contacts_search to find the contact",
+              "Try the phone number or email directly",
+            ],
+          },
+          null,
+          2,
         );
       }
 
-      const escapedTo = escapeAppleScript(to);
+      if (resolved.type === "ambiguous") {
+        return JSON.stringify(
+          {
+            disambiguation_needed: true,
+            query: params.to,
+            message: `Found ${resolved.matches.length} contacts matching "${params.to}". Which one should I send to?`,
+            options: resolved.matches.map((m, i) => ({
+              choice: i + 1,
+              name: m.name || "Unknown",
+              identifier: m.handle,
+            })),
+            action: "send_message",
+            pending_message: params.message,
+          },
+          null,
+          2,
+        );
+      }
+
+      const escapedTo = escapeAppleScript(resolved.handle);
       const escapedMessage = escapeAppleScript(params.message);
       const script = `tell application "Messages"
         set targetService to 1st account whose service type = iMessage
@@ -1384,14 +1607,70 @@ async function executeOperation(
         send "${escapedMessage}" to targetBuddy
         return "Message sent to ${escapedTo}"
       end tell`;
-      return await runAppleScript(script);
+
+      const result = await runAppleScript(script);
+
+      // Return structured success response
+      return JSON.stringify(
+        {
+          success: true,
+          sent_to: {
+            name: resolved.name || resolved.handle,
+            identifier: resolved.handle,
+          },
+          message_preview:
+            params.message.length > 50
+              ? params.message.substring(0, 50) + "..."
+              : params.message,
+        },
+        null,
+        2,
+      );
     }
 
     case "messages_read": {
       if (!params.contact)
         throw new Error("Missing required parameter: contact");
+
+      // Resolve contact to handle with disambiguation
+      const resolved = await resolveToIMessageHandle(params.contact);
+
+      if (resolved.type === "not_found") {
+        return JSON.stringify(
+          {
+            not_found: true,
+            query: params.contact,
+            message: `No iMessage conversation found for "${params.contact}".`,
+            suggestions: [
+              "Check the spelling of the contact name",
+              "Use messages_conversations to see active chats",
+              "Try the phone number or email directly",
+            ],
+          },
+          null,
+          2,
+        );
+      }
+
+      if (resolved.type === "ambiguous") {
+        return JSON.stringify(
+          {
+            disambiguation_needed: true,
+            query: params.contact,
+            message: `Found ${resolved.matches.length} contacts matching "${params.contact}". Which one?`,
+            options: resolved.matches.map((m, i) => ({
+              choice: i + 1,
+              name: m.name || "Unknown",
+              identifier: m.handle,
+            })),
+          },
+          null,
+          2,
+        );
+      }
+
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const escapedContact = escapeSQL(params.contact);
+      const escapedContact = escapeSQL(resolved.handle);
       const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
         m.is_from_me,
         h.id as handle,
@@ -1401,7 +1680,17 @@ async function executeOperation(
         WHERE h.id LIKE '%${escapedContact}%' ESCAPE '\\' AND m.text IS NOT NULL
         ORDER BY m.date DESC LIMIT ${limit}`;
       const rows = queryMessagesDBRows(sql);
-      if (rows.length === 0) return `No messages found for ${params.contact}`;
+      if (rows.length === 0) {
+        return JSON.stringify(
+          {
+            not_found: true,
+            contact: resolved.name || resolved.handle,
+            message: `No messages found with ${resolved.name || resolved.handle}.`,
+          },
+          null,
+          2,
+        );
+      }
       return await formatMessagesWithNames(rows);
     }
 
@@ -1473,51 +1762,44 @@ async function executeOperation(
       const days = Math.min(Math.max(1, params.days || 7), 365);
       const limit = Math.min(Math.max(1, params.limit || 100), 500);
 
-      // If contact looks like a name (not phone/email), resolve it first
-      let contactHandle = params.contact.trim();
-      const isPhone = /^[\d\s\-\(\)\+]+$/.test(contactHandle);
-      const isEmail = contactHandle.includes("@");
+      // Resolve contact with disambiguation support
+      const resolved = await resolveToIMessageHandle(params.contact);
 
-      if (!isPhone && !isEmail) {
-        // Assume it's a name - look up phone/email from contacts
-        const escapedName = escapeAppleScript(contactHandle);
-        const script = `tell application "Contacts"
-          set matchingPeople to (every person whose name contains "${escapedName}")
-          if (count of matchingPeople) > 0 then
-            set p to item 1 of matchingPeople
-            set pPhones to phones of p
-            if (count of pPhones) > 0 then
-              return value of item 1 of pPhones
-            else
-              set pEmails to emails of p
-              if (count of pEmails) > 0 then
-                return value of item 1 of pEmails
-              else
-                return ""
-              end if
-            end if
-          else
-            return ""
-          end if
-        end tell`;
-
-        try {
-          const resolved = await runAppleScript(script, "Contacts");
-          if (!resolved.trim()) {
-            return JSON.stringify(
-              {
-                error: `No contact found with name "${params.contact}"`,
-              },
-              null,
-              2,
-            );
-          }
-          contactHandle = resolved.trim();
-        } catch (error: any) {
-          throw new Error(`Failed to resolve contact name: ${error.message}`);
-        }
+      if (resolved.type === "not_found") {
+        return JSON.stringify(
+          {
+            not_found: true,
+            query: params.contact,
+            message: `No iMessage conversation found for "${params.contact}".`,
+            suggestions: [
+              "Check the spelling of the contact name",
+              "Use messages_conversations to see active chats",
+              "Try the phone number or email directly",
+            ],
+          },
+          null,
+          2,
+        );
       }
 
+      if (resolved.type === "ambiguous") {
+        return JSON.stringify(
+          {
+            disambiguation_needed: true,
+            query: params.contact,
+            message: `Found ${resolved.matches.length} contacts matching "${params.contact}". Which one?`,
+            options: resolved.matches.map((m, i) => ({
+              choice: i + 1,
+              name: m.name || "Unknown",
+              identifier: m.handle,
+            })),
+          },
+          null,
+          2,
+        );
+      }
+
+      const contactHandle = resolved.handle;
       const escapedContact = escapeSQL(contactHandle);
 
       // Apple epoch: seconds since 2001-01-01, stored as nanoseconds
@@ -2188,25 +2470,68 @@ async function executeOperation(
       if (!params.message)
         throw new Error("Missing required parameter: message");
 
-      // Validate JID format - help users who try to use phone numbers directly
-      const to = params.to.trim();
-      if (!to.includes("@")) {
-        throw new Error(
-          `Invalid recipient format: "${to}". WhatsApp requires a JID, not a phone number.\n\n` +
-            `To find someone's JID:\n` +
-            `  1. whatsapp(action='contacts', params={query: 'name or number'})\n` +
-            `  2. Use the JID from the result (e.g., '15551234567@s.whatsapp.net')\n\n` +
-            `For groups, use whatsapp(action='chats') to find group JIDs.`,
+      // Resolve recipient with disambiguation support
+      const resolved = await resolveToWhatsAppJid(params.to);
+
+      if (resolved.type === "not_found") {
+        return JSON.stringify(
+          {
+            not_found: true,
+            query: params.to,
+            message: `No WhatsApp contact found for "${params.to}".`,
+            suggestions: [
+              "Check the spelling of the contact name",
+              "Use whatsapp(action='chats') to see active conversations",
+              "Try the phone number with country code (e.g., +15551234567)",
+            ],
+          },
+          null,
+          2,
+        );
+      }
+
+      if (resolved.type === "ambiguous") {
+        return JSON.stringify(
+          {
+            disambiguation_needed: true,
+            query: params.to,
+            message: `Found ${resolved.matches.length} contacts matching "${params.to}". Which one should I send to?`,
+            options: resolved.matches.map((m, i) => ({
+              choice: i + 1,
+              name: m.name || "Unknown",
+              identifier: m.jid,
+            })),
+            action: "send_message",
+            pending_message: params.message,
+          },
+          null,
+          2,
         );
       }
 
       const result = await callWhatsAppAPI("/api/send", "POST", {
-        recipient: to,
+        recipient: resolved.jid,
         message: params.message,
       });
 
       if (result.success) {
-        return `Message sent to ${result.recipient}\nMessage ID: ${result.message_id}`;
+        // Return structured success response
+        return JSON.stringify(
+          {
+            success: true,
+            sent_to: {
+              name: resolved.name || resolved.jid,
+              identifier: resolved.jid,
+            },
+            message_id: result.message_id,
+            message_preview:
+              params.message.length > 50
+                ? params.message.substring(0, 50) + "..."
+                : params.message,
+          },
+          null,
+          2,
+        );
       } else {
         throw new Error(result.error || "Failed to send message");
       }
@@ -2227,19 +2552,85 @@ async function executeOperation(
       const rows = await queryWhatsAppDB(sql);
       if (rows.length === 0) return "No chats found";
 
-      return rows
-        .map(
-          (r) =>
-            `${r.name || r.jid} (${r.jid})\n  Last: ${r.last_message_time || "unknown"}`,
-        )
-        .join("\n\n");
+      // Resolve contact names for individual chats
+      const formattedChats = await Promise.all(
+        rows.map(async (r: any) => {
+          const isGroup = r.jid.includes("@g.us");
+          let displayName = r.name;
+
+          // For individual chats without a name, look up contact
+          if (!isGroup && !displayName) {
+            const phone = phoneFromJid(r.jid);
+            if (phone) {
+              const resolved = await resolveHandleToName(phone);
+              displayName = resolved !== phone ? resolved : null;
+            }
+          }
+
+          // Format relative time
+          let lastActivity = "unknown";
+          if (r.last_message_time && r.last_message_time !== "undefined") {
+            const lastDate = new Date(r.last_message_time);
+            if (!isNaN(lastDate.getTime())) {
+              lastActivity = formatRelativeTime(lastDate);
+            }
+          }
+
+          // Use display name, or phone for individuals, or JID for groups
+          const name = displayName || phoneFromJid(r.jid) || r.jid;
+          const typeIndicator = isGroup ? "📱 Group" : "👤";
+
+          return `${typeIndicator} ${name}\n  JID: ${r.jid}\n  Last: ${lastActivity}`;
+        }),
+      );
+
+      return formattedChats.join("\n\n");
     }
 
     case "whatsapp_messages": {
-      if (!params.chatJid)
-        throw new Error("Missing required parameter: chatJid");
+      if (!params.contact) {
+        throw new Error("Missing required parameter: contact (name/phone/JID)");
+      }
+      const identifier = params.contact;
+
+      // Resolve to JID - handle ambiguous matches
+      const resolved = await resolveToWhatsAppJid(identifier);
+      if (resolved.type === "not_found") {
+        return JSON.stringify(
+          {
+            not_found: true,
+            query: identifier,
+            message: `No WhatsApp chat found for "${identifier}".`,
+            suggestions: [
+              "Try a different spelling or part of the name",
+              "Use a phone number instead",
+              "Search contacts: whatsapp(action='contacts', params={query: '...'})",
+            ],
+          },
+          null,
+          2,
+        );
+      }
+      if (resolved.type === "ambiguous") {
+        // Return structured disambiguation for the AI to present as choices
+        return JSON.stringify(
+          {
+            disambiguation_needed: true,
+            query: identifier,
+            message: `I found ${resolved.matches.length} contacts matching "${identifier}". Which one?`,
+            options: resolved.matches.map((m, i) => ({
+              choice: i + 1,
+              name: m.name || "Unknown",
+              identifier: m.jid,
+            })),
+          },
+          null,
+          2,
+        );
+      }
+
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const escaped = escapeSQL(params.chatJid);
+      const escaped = escapeSQL(resolved.jid);
 
       const sql = `SELECT timestamp,
         is_from_me,
@@ -2250,8 +2641,7 @@ async function executeOperation(
         ORDER BY timestamp DESC LIMIT ${limit}`;
 
       const rows = await queryWhatsAppDB(sql);
-      if (rows.length === 0)
-        return `No messages found for chat: ${params.chatJid}`;
+      if (rows.length === 0) return `No messages found for: ${identifier}`;
 
       return await formatMessagesWithNames(rows, {
         handleField: "sender",
@@ -2292,36 +2682,123 @@ async function executeOperation(
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
       const escaped = escapeSQL(params.query);
 
-      const sql = `SELECT jid, name FROM contacts
-        WHERE name LIKE '%${escaped}%' ESCAPE '\\' OR jid LIKE '%${escaped}%' ESCAPE '\\'
-        LIMIT ${limit}`;
+      // Check if query looks like a phone number
+      const isPhoneQuery = /^[\d\s\-\(\)\+]+$/.test(params.query.trim());
+
+      let sql: string;
+      if (isPhoneQuery) {
+        // Normalize phone for better matching
+        const normalized = normalizePhone(params.query);
+        // Try matching with different phone formats
+        sql = `SELECT jid, name FROM contacts
+          WHERE jid LIKE '%${normalized}%' ESCAPE '\\'
+             OR jid LIKE '%${normalized.slice(-10)}%' ESCAPE '\\'
+          LIMIT ${limit}`;
+      } else {
+        // Name search - search both contacts and chats (groups have names)
+        sql = `SELECT jid, name FROM contacts
+          WHERE name LIKE '%${escaped}%' ESCAPE '\\' OR jid LIKE '%${escaped}%' ESCAPE '\\'
+          UNION
+          SELECT jid, name FROM chats
+          WHERE name LIKE '%${escaped}%' ESCAPE '\\'
+          LIMIT ${limit}`;
+      }
 
       const rows = await queryWhatsAppDB(sql);
-      if (rows.length === 0)
-        return `No contacts found matching: ${params.query}`;
 
-      return rows.map((r) => `${r.name || "Unknown"} (${r.jid})`).join("\n");
+      if (rows.length === 0) {
+        // If no results and it was a phone query, suggest JID format
+        if (isPhoneQuery) {
+          const normalized = normalizePhone(params.query);
+          return `No contacts found for phone: ${params.query}\n\nTip: You can try messaging directly using JID format: ${normalized}@s.whatsapp.net`;
+        }
+        return `No contacts found matching: ${params.query}`;
+      }
+
+      // Enhance with contact names from Mac Contacts
+      const enhanced = await Promise.all(
+        rows.map(async (r: any) => {
+          const isGroup = r.jid.includes("@g.us");
+          let displayName = r.name;
+
+          // For individual contacts without a name, try Mac Contacts
+          if (!isGroup && !displayName) {
+            const phone = phoneFromJid(r.jid);
+            if (phone) {
+              const resolved = await resolveHandleToName(phone);
+              if (resolved !== phone) displayName = resolved;
+            }
+          }
+
+          const typeIndicator = isGroup ? "📱" : "👤";
+          const name = displayName || phoneFromJid(r.jid) || "Unknown";
+          return `${typeIndicator} ${name} (${r.jid})`;
+        }),
+      );
+
+      return enhanced.join("\n");
     }
 
     case "whatsapp_chat_context": {
-      if (!params.chatJid)
-        throw new Error("Missing required parameter: chatJid");
+      if (!params.contact) {
+        throw new Error("Missing required parameter: contact (name/phone/JID)");
+      }
+      const identifier = params.contact;
 
+      // Resolve to JID - handle ambiguous matches
+      const resolved = await resolveToWhatsAppJid(identifier);
+      if (resolved.type === "not_found") {
+        return JSON.stringify(
+          {
+            not_found: true,
+            query: identifier,
+            message: `No WhatsApp chat found for "${identifier}".`,
+            suggestions: [
+              "Try a different spelling or part of the name",
+              "Use a phone number instead",
+              "Search contacts: whatsapp(action='contacts', params={query: '...'})",
+            ],
+          },
+          null,
+          2,
+        );
+      }
+      if (resolved.type === "ambiguous") {
+        return JSON.stringify(
+          {
+            disambiguation_needed: true,
+            query: identifier,
+            message: `I found ${resolved.matches.length} contacts matching "${identifier}". Which one?`,
+            options: resolved.matches.map((m, i) => ({
+              choice: i + 1,
+              name: m.name || "Unknown",
+              identifier: m.jid,
+            })),
+          },
+          null,
+          2,
+        );
+      }
+
+      const chatJid = resolved.jid;
       const days = Math.min(Math.max(1, params.days || 7), 365);
       const limit = Math.min(Math.max(1, params.limit || 100), 500);
-      const escaped = escapeSQL(params.chatJid);
+      const escaped = escapeSQL(chatJid);
+      const isGroup = chatJid.includes("@g.us");
 
-      // Calculate ISO timestamp for N days ago (WhatsApp stores timestamps as ISO strings)
+      // Calculate ISO timestamp for time windows
       const daysAgo = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
       const daysAgoISO = daysAgo.toISOString();
+      const sevenDaysAgo = new Date(
+        Date.now() - 7 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const thirtyDaysAgo = new Date(
+        Date.now() - 30 * 24 * 60 * 60 * 1000,
+      ).toISOString();
 
-      // Get messages
+      // Get messages for the requested window
       const messagesSql = `
-        SELECT
-          timestamp,
-          is_from_me,
-          sender,
-          content
+        SELECT timestamp, is_from_me, sender, content
         FROM messages
         WHERE chat_jid = '${escaped}'
           AND timestamp > '${daysAgoISO}'
@@ -2333,21 +2810,31 @@ async function executeOperation(
       if (messages.length === 0) {
         return JSON.stringify(
           {
-            error: `No messages found for "${params.chatJid}" in the last ${days} days`,
+            error: `No messages found for "${identifier}" in the last ${days} days`,
           },
           null,
           2,
         );
       }
 
-      // Get chat metadata
-      const metaSql = `
-        SELECT name FROM chats WHERE jid = '${escaped}'`;
+      // Get chat metadata (name for groups)
+      const metaSql = `SELECT name FROM chats WHERE jid = '${escaped}'`;
       const chatMeta = await queryWhatsAppDB(metaSql);
-      const chatName = chatMeta[0]?.name || params.chatJid;
+      let chatName = chatMeta[0]?.name || null;
 
-      // Get conversation stats
-      const statsSql = `
+      // For individual chats, resolve phone to contact name
+      let contactPhone: string | null = null;
+      if (!isGroup) {
+        contactPhone = phoneFromJid(chatJid);
+        if (contactPhone && !chatName) {
+          chatName = await resolveHandleToName(contactPhone);
+          // If still just a phone number, keep it as-is
+          if (chatName === contactPhone) chatName = null;
+        }
+      }
+
+      // Get ALL-TIME conversation stats (not just requested window)
+      const allTimeStatsSql = `
         SELECT
           MIN(timestamp) as first_message,
           MAX(timestamp) as last_message,
@@ -2355,36 +2842,125 @@ async function executeOperation(
           SUM(CASE WHEN is_from_me = 1 THEN 1 ELSE 0 END) as from_you,
           SUM(CASE WHEN is_from_me = 0 THEN 1 ELSE 0 END) as from_them
         FROM messages
+        WHERE chat_jid = '${escaped}'`;
+      const allTimeStats = (await queryWhatsAppDB(allTimeStatsSql))[0];
+
+      // Get recent activity (7 and 30 days)
+      const recentStatsSql = `
+        SELECT
+          SUM(CASE WHEN timestamp > '${sevenDaysAgo}' THEN 1 ELSE 0 END) as last_7_days,
+          SUM(CASE WHEN timestamp > '${thirtyDaysAgo}' THEN 1 ELSE 0 END) as last_30_days,
+          SUM(CASE WHEN timestamp > '${sevenDaysAgo}' AND is_from_me = 1 THEN 1 ELSE 0 END) as from_you_7d,
+          SUM(CASE WHEN timestamp > '${sevenDaysAgo}' AND is_from_me = 0 THEN 1 ELSE 0 END) as from_them_7d
+        FROM messages
+        WHERE chat_jid = '${escaped}'`;
+      const recentStats = (await queryWhatsAppDB(recentStatsSql))[0];
+
+      // Get last message info for status
+      const lastMsgSql = `
+        SELECT is_from_me, sender FROM messages
         WHERE chat_jid = '${escaped}'
-          AND timestamp > '${daysAgoISO}'`;
-      const stats = (await queryWhatsAppDB(statsSql))[0];
+        ORDER BY timestamp DESC LIMIT 1`;
+      const lastMsg = (await queryWhatsAppDB(lastMsgSql))[0];
 
-      // Format messages for LLM analysis (timestamps are already ISO strings)
-      const formattedMessages = messages.map((m: any) => ({
-        timestamp: m.timestamp,
-        sender: m.is_from_me ? "You" : m.sender || "Them",
-        content: m.content,
-      }));
+      // Resolve sender names for group messages
+      const senderJids = [
+        ...new Set(
+          messages.filter((m: any) => !m.is_from_me).map((m: any) => m.sender),
+        ),
+      ];
+      const senderNames = new Map<string, string>();
+      for (const jid of senderJids) {
+        if (jid) {
+          const phone = phoneFromJid(jid);
+          if (phone) {
+            const name = await resolveHandleToName(phone);
+            senderNames.set(jid, name !== phone ? name : phone);
+          } else {
+            senderNames.set(jid, jid);
+          }
+        }
+      }
 
-      // Build LLM-friendly response
-      const context = {
+      // Format dates
+      const firstMsgDate = allTimeStats.first_message
+        ? new Date(allTimeStats.first_message)
+        : null;
+      const lastMsgDate = allTimeStats.last_message
+        ? new Date(allTimeStats.last_message)
+        : null;
+
+      // Determine who sent the last message
+      let lastMessageFrom = "unknown";
+      if (lastMsg) {
+        if (lastMsg.is_from_me) {
+          lastMessageFrom = "you";
+        } else if (isGroup && lastMsg.sender) {
+          lastMessageFrom = senderNames.get(lastMsg.sender) || lastMsg.sender;
+        } else {
+          lastMessageFrom = chatName || contactPhone || chatJid;
+        }
+      }
+
+      // Build the response matching iMessage format
+      const response = {
         conversation: {
-          name: chatName,
-          jid: params.chatJid,
-          type: params.chatJid.includes("@g.us") ? "group" : "individual",
+          type: isGroup ? "group" : "1:1",
+          ...(isGroup
+            ? { name: chatName || chatJid }
+            : {
+                with: {
+                  name: chatName || contactPhone || chatJid,
+                  phone: contactPhone,
+                },
+              }),
+          jid: chatJid,
+          context: {
+            started: firstMsgDate
+              ? firstMsgDate.toLocaleDateString("en-US", {
+                  month: "long",
+                  year: "numeric",
+                })
+              : "unknown",
+            age: firstMsgDate ? formatChatAge(firstMsgDate) : "unknown",
+            total_messages: allTimeStats.total_messages || 0,
+            recent_activity: {
+              last_7_days: recentStats.last_7_days || 0,
+              last_30_days: recentStats.last_30_days || 0,
+              from_you: recentStats.from_you_7d || 0,
+              from_them: recentStats.from_them_7d || 0,
+            },
+            status: {
+              last_message_from: lastMessageFrom,
+              last_message_time: lastMsgDate
+                ? formatRelativeTime(lastMsgDate)
+                : "unknown",
+              awaiting_your_response: lastMsg ? !lastMsg.is_from_me : false,
+            },
+          },
         },
-        metadata: {
-          days_included: days,
-          first_message: stats.first_message || null,
-          last_message: stats.last_message || null,
-          total_messages: stats.total_messages,
-          from_you: stats.from_you,
-          from_them: stats.from_them,
-        },
-        messages: formattedMessages,
+        messages: messages.map((m: any) => {
+          const msgDate = new Date(m.timestamp);
+          let senderName: string;
+          if (m.is_from_me) {
+            senderName = "you";
+          } else if (isGroup && m.sender) {
+            senderName = senderNames.get(m.sender) || m.sender;
+          } else {
+            senderName = chatName || contactPhone || "them";
+          }
+
+          return {
+            role: "user",
+            from: senderName,
+            time: formatRelativeTime(msgDate),
+            timestamp: m.timestamp,
+            content: m.content || "",
+          };
+        }),
       };
 
-      return JSON.stringify(context, null, 2);
+      return JSON.stringify(response, null, 2);
     }
 
     case "whatsapp_raw_sql": {
