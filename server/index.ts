@@ -1097,7 +1097,9 @@ async function buildContactCache(): Promise<Map<string, string>> {
 
   try {
     // Find all source databases
-    const { stdout: sources } = await execAsync(`ls -d "${addressBookDir}"/*/ 2>/dev/null || true`);
+    const { stdout: sources } = await execAsync(
+      `ls -d "${addressBookDir}"/*/ 2>/dev/null || true`,
+    );
 
     for (const sourceDir of sources.trim().split("\n").filter(Boolean)) {
       const dbPath = `${sourceDir}AddressBook-v22.abcddb`;
@@ -1427,7 +1429,8 @@ async function executeOperation(
         WHERE m.text LIKE '%${escapedQuery}%' ESCAPE '\\'
         ORDER BY m.date DESC LIMIT ${limit}`;
       const rows = queryMessagesDBRows(sql);
-      if (rows.length === 0) return `No messages found matching "${params.query}"`;
+      if (rows.length === 0)
+        return `No messages found matching "${params.query}"`;
       return await formatMessagesWithNames(rows);
     }
 
@@ -1448,13 +1451,16 @@ async function executeOperation(
       if (rows.length === 0) return "No conversations found";
 
       // Resolve participant phone numbers to names
-      const participants = [...new Set(rows.map((r: any) => r.participant).filter(Boolean))];
+      const participants = [
+        ...new Set(rows.map((r: any) => r.participant).filter(Boolean)),
+      ];
       const nameMap = await resolveHandlesToNames(participants);
 
       return rows
         .map((r: any) => {
           // Use display_name if available, otherwise resolved contact name, otherwise raw participant
-          const displayName = r.name || nameMap.get(r.participant) || r.participant;
+          const displayName =
+            r.name || nameMap.get(r.participant) || r.participant;
           return `${displayName}|${r.last_date || ""}|${r.last_message || ""}`;
         })
         .join("\n");
@@ -2305,9 +2311,9 @@ async function executeOperation(
       const limit = Math.min(Math.max(1, params.limit || 100), 500);
       const escaped = escapeSQL(params.chatJid);
 
-      // Calculate timestamp for N days ago (WhatsApp uses Unix seconds)
-      const daysAgoTimestamp =
-        Math.floor(Date.now() / 1000) - days * 24 * 60 * 60;
+      // Calculate ISO timestamp for N days ago (WhatsApp stores timestamps as ISO strings)
+      const daysAgo = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      const daysAgoISO = daysAgo.toISOString();
 
       // Get messages
       const messagesSql = `
@@ -2318,7 +2324,7 @@ async function executeOperation(
           content
         FROM messages
         WHERE chat_jid = '${escaped}'
-          AND timestamp > ${daysAgoTimestamp}
+          AND timestamp > '${daysAgoISO}'
         ORDER BY timestamp ASC
         LIMIT ${limit}`;
 
@@ -2350,12 +2356,12 @@ async function executeOperation(
           SUM(CASE WHEN is_from_me = 0 THEN 1 ELSE 0 END) as from_them
         FROM messages
         WHERE chat_jid = '${escaped}'
-          AND timestamp > ${daysAgoTimestamp}`;
+          AND timestamp > '${daysAgoISO}'`;
       const stats = (await queryWhatsAppDB(statsSql))[0];
 
-      // Format messages for LLM analysis
+      // Format messages for LLM analysis (timestamps are already ISO strings)
       const formattedMessages = messages.map((m: any) => ({
-        timestamp: new Date(m.timestamp * 1000).toISOString(),
+        timestamp: m.timestamp,
         sender: m.is_from_me ? "You" : m.sender || "Them",
         content: m.content,
       }));
@@ -2369,12 +2375,8 @@ async function executeOperation(
         },
         metadata: {
           days_included: days,
-          first_message: stats.first_message
-            ? new Date(stats.first_message * 1000).toISOString()
-            : null,
-          last_message: stats.last_message
-            ? new Date(stats.last_message * 1000).toISOString()
-            : null,
+          first_message: stats.first_message || null,
+          last_message: stats.last_message || null,
           total_messages: stats.total_messages,
           from_you: stats.from_you,
           from_them: stats.from_them,
