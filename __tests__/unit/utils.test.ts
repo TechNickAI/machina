@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  escapeSQL,
+  escapeSQLLike,
   normalizePhone,
   formatRelativeTime,
   formatChatAge,
@@ -8,26 +8,26 @@ import {
 } from "../../lib/utils.js";
 
 describe("Utils Module", () => {
-  describe("escapeSQL", () => {
+  describe("escapeSQLLike", () => {
     it("should escape single quotes", () => {
-      expect(escapeSQL("O'Brien")).toBe("O''Brien");
+      expect(escapeSQLLike("O'Brien")).toBe("O''Brien");
     });
 
     it("should escape backslashes", () => {
-      expect(escapeSQL("path\\to\\file")).toBe("path\\\\to\\\\file");
+      expect(escapeSQLLike("path\\to\\file")).toBe("path\\\\to\\\\file");
     });
 
     it("should escape LIKE wildcards", () => {
-      expect(escapeSQL("100%")).toBe("100\\%");
-      expect(escapeSQL("user_name")).toBe("user\\_name");
+      expect(escapeSQLLike("100%")).toBe("100\\%");
+      expect(escapeSQLLike("user_name")).toBe("user\\_name");
     });
 
     it("should escape all special characters together", () => {
-      expect(escapeSQL("100% of O'Brien's files_*")).toBe("100\\% of O''Brien''s files\\_*");
+      expect(escapeSQLLike("100% of O'Brien's files_*")).toBe("100\\% of O''Brien''s files\\_*");
     });
 
     it("should handle empty string", () => {
-      expect(escapeSQL("")).toBe("");
+      expect(escapeSQLLike("")).toBe("");
     });
   });
 

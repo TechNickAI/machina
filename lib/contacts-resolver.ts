@@ -27,6 +27,9 @@ async function buildContactCache(): Promise<Map<string, string>> {
 
   try {
     // Find all source databases with timeout to prevent blocking
+    // Note: Promise.race timeout doesn't cancel the underlying exec.
+    // This is acceptable here since ls is fast and the orphaned process
+    // will complete/fail shortly. For long-running processes, use AbortController.
     const { stdout: sources } = await Promise.race([
       execAsync(`ls -d "${addressBookDir}"/*/ 2>/dev/null || true`),
       new Promise<never>((_, reject) =>

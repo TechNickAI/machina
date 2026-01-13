@@ -20,7 +20,7 @@ import { createRequire } from "node:module";
 import Database from "better-sqlite3";
 
 // Import from lib modules
-import { escapeSQL, normalizePhone, formatRelativeTime, formatChatAge } from "../lib/utils.js";
+import { escapeSQLLike, normalizePhone, formatRelativeTime, formatChatAge } from "../lib/utils.js";
 import { queryMessagesDBRows } from "../lib/messages-db.js";
 import {
   resolveHandleToName,
@@ -63,7 +63,7 @@ interface OperationParam {
   type: string;
   required: boolean;
   description: string;
-  default?: any;
+  default?: unknown;
 }
 
 interface Operation {
@@ -982,7 +982,7 @@ async function resolveToWhatsAppJid(identifier: string): Promise<ResolveResult> 
   // Already a JID? Return as-is (unambiguous)
   if (trimmed.includes("@s.whatsapp.net") || trimmed.includes("@g.us")) {
     const chatMeta = await queryWhatsAppDB(
-      `SELECT name FROM chats WHERE jid = '${escapeSQL(trimmed)}'`
+      `SELECT name FROM chats WHERE jid = '${escapeSQLLike(trimmed)}'`
     );
     return { type: "found", jid: trimmed, name: chatMeta[0]?.name || null };
   }
@@ -1023,7 +1023,7 @@ async function resolveToWhatsAppJid(identifier: string): Promise<ResolveResult> 
   }
 
   // Name search - check for multiple matches (potential ambiguity)
-  const escaped = escapeSQL(trimmed);
+  const escaped = escapeSQLLike(trimmed);
 
   // Search WhatsApp contacts by name or notify field
   const contacts = await queryWhatsAppDB(
@@ -1107,7 +1107,7 @@ async function resolveToIMessageHandle(identifier: string): Promise<IMessageReso
     // Verify handle exists in Messages DB
     const normalized = isPhone ? normalizePhone(trimmed) : trimmed.toLowerCase();
     const handles = queryMessagesDBRows<{ id: string }>(
-      `SELECT DISTINCT h.id FROM handle h WHERE h.id LIKE '%${escapeSQL(normalized)}%' ESCAPE '\\' LIMIT 1`
+      `SELECT DISTINCT h.id FROM handle h WHERE h.id LIKE '%${escapeSQLLike(normalized)}%' ESCAPE '\\' LIMIT 1`
     );
     if (handles.length > 0 && handles[0]) {
       const name = await resolveHandleToName(handles[0].id);
@@ -1387,7 +1387,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       }
 
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const escapedContact = escapeSQL(resolved.handle);
+      const escapedContact = escapeSQLLike(resolved.handle);
       const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
         m.is_from_me,
         h.id as handle,
@@ -1429,7 +1429,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
     case "messages_search": {
       if (!params.query) throw new Error("Missing required parameter: query");
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const escapedQuery = escapeSQL(params.query);
+      const escapedQuery = escapeSQLLike(params.query);
       const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
         m.is_from_me,
         h.id as handle,
@@ -1515,7 +1515,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       }
 
       const contactHandle = resolved.handle;
-      const escapedContact = escapeSQL(contactHandle);
+      const escapedContact = escapeSQLLike(contactHandle);
 
       // Apple epoch: seconds since 2001-01-01, stored as nanoseconds
       const appleEpochOffset = 978307200;
@@ -2259,7 +2259,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
         FROM chats ORDER BY last_message_time DESC LIMIT ${limit}`;
 
       if (params.query) {
-        const escaped = escapeSQL(params.query);
+        const escaped = escapeSQLLike(params.query);
         sql = `SELECT jid, name, last_message_time
           FROM chats WHERE name LIKE '%${escaped}%' ESCAPE '\\' OR jid LIKE '%${escaped}%' ESCAPE '\\'
           ORDER BY last_message_time DESC LIMIT ${limit}`;
@@ -2346,7 +2346,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       }
 
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const escaped = escapeSQL(resolved.jid);
+      const escaped = escapeSQLLike(resolved.jid);
 
       const sql = `SELECT timestamp,
         is_from_me,
@@ -2369,7 +2369,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
     case "whatsapp_search": {
       if (!params.query) throw new Error("Missing required parameter: query");
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const escaped = escapeSQL(params.query);
+      const escaped = escapeSQLLike(params.query);
 
       const sql = `SELECT m.timestamp,
         m.is_from_me,
@@ -2395,7 +2395,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
     case "whatsapp_contacts": {
       if (!params.query) throw new Error("Missing required parameter: query");
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
-      const escaped = escapeSQL(params.query);
+      const escaped = escapeSQLLike(params.query);
 
       // Check if query looks like a phone number
       const isPhoneQuery = /^[\d\s()+-]+$/.test(params.query.trim());
@@ -2498,7 +2498,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       const chatJid = resolved.jid;
       const days = Math.min(Math.max(1, params.days || 7), 365);
       const limit = Math.min(Math.max(1, params.limit || 100), 500);
-      const escaped = escapeSQL(chatJid);
+      const escaped = escapeSQLLike(chatJid);
       const isGroup = chatJid.includes("@g.us");
 
       // Calculate ISO timestamp for time windows

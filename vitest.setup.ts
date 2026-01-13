@@ -40,18 +40,6 @@ export const mockAppleScriptResponses: Record<string, string> = {
   'tell application "Messages" to return (count of accounts)': "2",
 };
 
-/**
- * Get mock response for an AppleScript command
- */
-export function getMockResponse(script: string): string | null {
-  for (const [pattern, response] of Object.entries(mockAppleScriptResponses)) {
-    if (script.includes(pattern)) {
-      return response;
-    }
-  }
-  return null;
-}
-
 // Silence console in tests unless DEBUG_TESTS is set
 if (!process.env.DEBUG_TESTS) {
   vi.spyOn(console, "log").mockImplementation(() => {});

@@ -5,10 +5,14 @@
  */
 
 /**
- * Escape string for SQL LIKE patterns (prevents SQL injection)
+ * Escape string for use in SQL LIKE patterns
+ *
+ * WARNING: This is ONLY safe for LIKE clause values, not general SQL injection prevention.
+ * For other SQL contexts, use parameterized queries instead.
+ *
  * Escapes: ' (quotes), % and _ (LIKE wildcards), \ (escape character)
  */
-export function escapeSQL(str: string): string {
+export function escapeSQLLike(str: string): string {
   return str
     .replace(/\\/g, "\\\\") // Backslash first to avoid double-escaping
     .replace(/'/g, "''")
