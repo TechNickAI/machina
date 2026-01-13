@@ -157,6 +157,54 @@ const operations: Operation[] = [
       "List of conversations with participant info and last message preview",
     example: "machina(action='messages_conversations', params={limit: 10})",
   },
+  {
+    name: "messages_conversation_context",
+    description:
+      "Get a conversation formatted for LLM analysis. Returns messages in a structured format " +
+      "with clear identification of who sent each message (you vs others), conversation metadata, " +
+      "and attachment references. Ideal for AI assistants analyzing message history.",
+    parameters: [
+      {
+        name: "contact",
+        type: "string",
+        required: true,
+        description:
+          "Phone number, email, or contact name to get conversation for",
+      },
+      {
+        name: "days",
+        type: "number",
+        required: false,
+        description: "Number of days of history to include",
+        default: 7,
+      },
+      {
+        name: "limit",
+        type: "number",
+        required: false,
+        description: "Maximum number of messages to return",
+        default: 100,
+      },
+    ],
+    returns:
+      "JSON object with conversation metadata and messages array in LLM-friendly format",
+    example:
+      "machina(action='conversation_context', params={contact: '+15551234567', days: 7})",
+  },
+  {
+    name: "messages_get_attachment",
+    description: "Get details about a message attachment by ID",
+    parameters: [
+      {
+        name: "id",
+        type: "string",
+        required: true,
+        description: "Attachment ID (from conversation_context results)",
+      },
+    ],
+    returns: "Attachment details including file path and MIME type",
+    example: "machina(action='get_attachment', params={id: 'att_12345'})",
+  },
 
   // ============== NOTES ==============
   {
@@ -760,6 +808,161 @@ function escapeSQL(str: string): string {
     .replace(/_/g, "\\_");
 }
 
+// Normalize phone number for matching (strips formatting)
+function normalizePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  // Handle US numbers with or without country code
+  if (digits.length === 10) return `1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return digits;
+  return digits;
+}
+
+// Format relative time ("5 minutes ago", "2 days ago")
+function formatRelativeTime(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+
+  if (diffSec < 60) return "just now";
+  if (diffMin === 1) return "1 minute ago";
+  if (diffMin < 60) return `${diffMin} minutes ago`;
+  if (diffHour === 1) return "1 hour ago";
+  if (diffHour < 24) return `${diffHour} hours ago`;
+  if (diffDay === 1) return "yesterday";
+  if (diffDay < 7) return `${diffDay} days ago`;
+  if (diffDay < 30) {
+    const weeks = Math.floor(diffDay / 7);
+    return weeks === 1 ? "1 week ago" : `${weeks} weeks ago`;
+  }
+  if (diffDay < 365) {
+    const months = Math.floor(diffDay / 30);
+    return months === 1 ? "1 month ago" : `${months} months ago`;
+  }
+  const years = Math.floor(diffDay / 365);
+  return years === 1 ? "1 year ago" : `${years} years ago`;
+}
+
+// Format chat age ("5 years, 3 months")
+function formatChatAge(startDate: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - startDate.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 1) return "1 day";
+  if (diffDays < 7) return `${diffDays} days`;
+
+  if (diffDays < 30) {
+    const weeks = Math.floor(diffDays / 7);
+    return weeks === 1 ? "1 week" : `${weeks} weeks`;
+  }
+
+  if (diffDays < 365) {
+    const months = Math.floor(diffDays / 30);
+    return `${months} month${months !== 1 ? "s" : ""}`;
+  }
+
+  const years = Math.floor(diffDays / 365);
+  const remainingDays = diffDays % 365;
+  const months = Math.floor(remainingDays / 30);
+
+  if (months === 0) return `${years} year${years !== 1 ? "s" : ""}`;
+  return `${years} year${years !== 1 ? "s" : ""}, ${months} month${months !== 1 ? "s" : ""}`;
+}
+
+// Look up contact name from phone number or email via AppleScript
+async function lookupContact(identifier: string): Promise<string | null> {
+  // Detect if this is an email or phone
+  const isEmail = identifier.includes("@");
+
+  if (isEmail) {
+    // Look up by email
+    const escapedEmail = escapeAppleScript(identifier);
+    const script = `tell application "Contacts"
+      set matchingPeople to {}
+      repeat with p in people
+        repeat with em in emails of p
+          if value of em is "${escapedEmail}" then
+            set end of matchingPeople to name of p
+            exit repeat
+          end if
+        end repeat
+        if (count of matchingPeople) > 0 then exit repeat
+      end repeat
+      if (count of matchingPeople) > 0 then
+        return item 1 of matchingPeople
+      else
+        return ""
+      end if
+    end tell`;
+
+    try {
+      const result = await runAppleScript(script, "Contacts");
+      return result.trim() || null;
+    } catch {
+      return null;
+    }
+  } else {
+    // Look up by phone
+    const normalized = normalizePhone(identifier);
+    // Search by last 10 digits to handle country code variations
+    const searchDigits = normalized.slice(-10);
+
+    // Skip if no digits (e.g., identifier was already an email that got normalized to empty)
+    if (!searchDigits) return null;
+
+    const script = `tell application "Contacts"
+      set matchingPeople to {}
+      repeat with p in people
+        repeat with ph in phones of p
+          set phoneDigits to do shell script "echo " & quoted form of (value of ph) & " | tr -cd '0-9'"
+          if phoneDigits ends with "${searchDigits}" then
+            set end of matchingPeople to name of p
+            exit repeat
+          end if
+        end repeat
+        if (count of matchingPeople) > 0 then exit repeat
+      end repeat
+      if (count of matchingPeople) > 0 then
+        return item 1 of matchingPeople
+      else
+        return ""
+      end if
+    end tell`;
+
+    try {
+      const result = await runAppleScript(script, "Contacts");
+      return result.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+// Get attachment type from MIME type or filename
+function getAttachmentType(
+  mimeType: string | null,
+  filename: string | null,
+): string {
+  if (mimeType) {
+    if (mimeType.startsWith("image/")) return "image";
+    if (mimeType.startsWith("video/")) return "video";
+    if (mimeType.startsWith("audio/")) return "audio";
+    if (mimeType === "application/pdf") return "pdf";
+  }
+  if (filename) {
+    const ext = filename.split(".").pop()?.toLowerCase();
+    if (["jpg", "jpeg", "png", "gif", "heic", "webp"].includes(ext || ""))
+      return "image";
+    if (["mp4", "mov", "m4v", "avi"].includes(ext || "")) return "video";
+    if (["mp3", "m4a", "wav", "caf", "aac"].includes(ext || "")) return "audio";
+    if (ext === "pdf") return "pdf";
+  }
+  return "file";
+}
+
 // Ensure an app is running before AppleScript can talk to it
 async function ensureAppRunning(appName: string): Promise<void> {
   try {
@@ -791,7 +994,7 @@ async function runAppleScript(
   }
 }
 
-// SQLite query helper for Messages
+// SQLite query helper for Messages (returns pipe-delimited string)
 async function queryMessagesDB(sql: string): Promise<string> {
   const dbPath = `${process.env.HOME}/Library/Messages/chat.db`;
   let db;
@@ -800,6 +1003,20 @@ async function queryMessagesDB(sql: string): Promise<string> {
     const rows = db.prepare(sql).all();
     // Return formatted output similar to sqlite3 CLI
     return rows.map((row) => Object.values(row).join("|")).join("\n");
+  } catch (error: any) {
+    throw new Error(`Messages database error: ${error.message}`);
+  } finally {
+    if (db) db.close();
+  }
+}
+
+// SQLite query helper for Messages (returns objects)
+function queryMessagesDBRows(sql: string): any[] {
+  const dbPath = `${process.env.HOME}/Library/Messages/chat.db`;
+  let db;
+  try {
+    db = new Database(dbPath, { readonly: true });
+    return db.prepare(sql).all();
   } catch (error: any) {
     throw new Error(`Messages database error: ${error.message}`);
   } finally {
@@ -962,6 +1179,277 @@ async function executeOperation(
         LIMIT ${limit}`;
       const result = await queryMessagesDB(sql);
       return result || "No conversations found";
+    }
+
+    case "messages_conversation_context": {
+      if (!params.contact)
+        throw new Error("Missing required parameter: contact");
+
+      const days = Math.min(Math.max(1, params.days || 7), 365);
+      const limit = Math.min(Math.max(1, params.limit || 100), 500);
+
+      // If contact looks like a name (not phone/email), resolve it first
+      let contactHandle = params.contact.trim();
+      const isPhone = /^[\d\s\-\(\)\+]+$/.test(contactHandle);
+      const isEmail = contactHandle.includes("@");
+
+      if (!isPhone && !isEmail) {
+        // Assume it's a name - look up phone/email from contacts
+        const escapedName = escapeAppleScript(contactHandle);
+        const script = `tell application "Contacts"
+          set matchingPeople to (every person whose name contains "${escapedName}")
+          if (count of matchingPeople) > 0 then
+            set p to item 1 of matchingPeople
+            set pPhones to phones of p
+            if (count of pPhones) > 0 then
+              return value of item 1 of pPhones
+            else
+              set pEmails to emails of p
+              if (count of pEmails) > 0 then
+                return value of item 1 of pEmails
+              else
+                return ""
+              end if
+            end if
+          else
+            return ""
+          end if
+        end tell`;
+
+        try {
+          const resolved = await runAppleScript(script, "Contacts");
+          if (!resolved.trim()) {
+            return JSON.stringify(
+              {
+                error: `No contact found with name "${params.contact}"`,
+              },
+              null,
+              2,
+            );
+          }
+          contactHandle = resolved.trim();
+        } catch (error: any) {
+          throw new Error(`Failed to resolve contact name: ${error.message}`);
+        }
+      }
+
+      const escapedContact = escapeSQL(contactHandle);
+
+      // Apple epoch: seconds since 2001-01-01, stored as nanoseconds
+      const appleEpochOffset = 978307200;
+      const daysAgoTimestamp =
+        (Date.now() / 1000 - days * 24 * 60 * 60 - appleEpochOffset) *
+        1000000000;
+
+      // Get messages with attachments
+      const messagesSql = `
+        SELECT
+          m.ROWID as message_id,
+          m.date as raw_date,
+          m.date/1000000000 + ${appleEpochOffset} as unix_timestamp,
+          m.is_from_me,
+          h.id as sender_id,
+          m.text,
+          ma.attachment_id
+        FROM message m
+        LEFT JOIN handle h ON m.handle_id = h.ROWID
+        LEFT JOIN message_attachment_join ma ON m.ROWID = ma.message_id
+        WHERE h.id LIKE '%${escapedContact}%' ESCAPE '\\'
+          AND m.date > ${daysAgoTimestamp}
+        ORDER BY m.date ASC
+        LIMIT ${limit}`;
+
+      const messages = queryMessagesDBRows(messagesSql);
+
+      if (messages.length === 0) {
+        return JSON.stringify(
+          {
+            error: `No messages found for "${params.contact}" in the last ${days} days`,
+          },
+          null,
+          2,
+        );
+      }
+
+      // Get the handle ID for metadata queries
+      const handleId = messages[0]?.sender_id;
+
+      // Get conversation metadata
+      const metaSql = `
+        SELECT
+          MIN(m.date/1000000000 + ${appleEpochOffset}) as first_message_unix,
+          COUNT(*) as total_messages,
+          SUM(CASE WHEN m.is_from_me = 1 THEN 1 ELSE 0 END) as from_you,
+          SUM(CASE WHEN m.is_from_me = 0 THEN 1 ELSE 0 END) as from_them,
+          MAX(m.date/1000000000 + ${appleEpochOffset}) as last_message_unix,
+          (SELECT is_from_me FROM message m2
+           LEFT JOIN handle h2 ON m2.handle_id = h2.ROWID
+           WHERE h2.id LIKE '%${escapedContact}%' ESCAPE '\\'
+           ORDER BY m2.date DESC LIMIT 1) as last_is_from_me
+        FROM message m
+        LEFT JOIN handle h ON m.handle_id = h.ROWID
+        WHERE h.id LIKE '%${escapedContact}%' ESCAPE '\\'`;
+
+      const meta = queryMessagesDBRows(metaSql)[0];
+
+      // Get recent activity counts
+      const sevenDaysAgo =
+        (Date.now() / 1000 - 7 * 24 * 60 * 60 - appleEpochOffset) * 1000000000;
+      const thirtyDaysAgo =
+        (Date.now() / 1000 - 30 * 24 * 60 * 60 - appleEpochOffset) * 1000000000;
+
+      const recentSql = `
+        SELECT
+          SUM(CASE WHEN m.date > ${sevenDaysAgo} THEN 1 ELSE 0 END) as last_7_days,
+          SUM(CASE WHEN m.date > ${thirtyDaysAgo} THEN 1 ELSE 0 END) as last_30_days,
+          SUM(CASE WHEN m.date > ${sevenDaysAgo} AND m.is_from_me = 1 THEN 1 ELSE 0 END) as from_you_7d,
+          SUM(CASE WHEN m.date > ${sevenDaysAgo} AND m.is_from_me = 0 THEN 1 ELSE 0 END) as from_them_7d
+        FROM message m
+        LEFT JOIN handle h ON m.handle_id = h.ROWID
+        WHERE h.id LIKE '%${escapedContact}%' ESCAPE '\\'`;
+
+      const recent = queryMessagesDBRows(recentSql)[0];
+
+      // Look up contact name
+      const contactName = await lookupContact(handleId);
+
+      // Get attachment details for messages that have them
+      const attachmentIds = messages
+        .filter((m) => m.attachment_id)
+        .map((m) => m.attachment_id);
+
+      let attachments: Record<string, any> = {};
+      if (attachmentIds.length > 0) {
+        const attSql = `
+          SELECT ROWID, filename, mime_type, transfer_name
+          FROM attachment
+          WHERE ROWID IN (${attachmentIds.join(",")})`;
+        const attRows = queryMessagesDBRows(attSql);
+        for (const att of attRows) {
+          attachments[att.ROWID] = {
+            id: `att_${att.ROWID}`,
+            type: getAttachmentType(att.mime_type, att.filename),
+            filename: att.transfer_name || att.filename,
+          };
+        }
+      }
+
+      // Build the response
+      const firstMessageDate = new Date(meta.first_message_unix * 1000);
+      const lastMessageDate = new Date(meta.last_message_unix * 1000);
+
+      const response = {
+        conversation: {
+          type: "1:1",
+          with: {
+            name: contactName || handleId,
+            phone: handleId,
+          },
+          context: {
+            started: firstMessageDate.toLocaleDateString("en-US", {
+              month: "long",
+              year: "numeric",
+            }),
+            age: formatChatAge(firstMessageDate),
+            total_messages: meta.total_messages,
+            recent_activity: {
+              last_7_days: recent.last_7_days || 0,
+              last_30_days: recent.last_30_days || 0,
+              from_you: recent.from_you_7d || 0,
+              from_them: recent.from_them_7d || 0,
+            },
+            status: {
+              last_message_from: meta.last_is_from_me
+                ? "you"
+                : contactName || handleId,
+              last_message_time: formatRelativeTime(lastMessageDate),
+              awaiting_your_response: !meta.last_is_from_me,
+            },
+          },
+        },
+        messages: (() => {
+          // Group messages by message_id to handle multiple attachments
+          const messageMap = new Map<number, any>();
+
+          for (const m of messages) {
+            if (!messageMap.has(m.message_id)) {
+              const msgDate = new Date(m.unix_timestamp * 1000);
+              messageMap.set(m.message_id, {
+                role: "user",
+                from: m.is_from_me ? "you" : contactName || handleId,
+                time: formatRelativeTime(msgDate),
+                timestamp: msgDate.toISOString(),
+                content: m.text || "",
+                attachments: [],
+              });
+            }
+
+            // Add attachment if present
+            if (m.attachment_id && attachments[m.attachment_id]) {
+              messageMap
+                .get(m.message_id)!
+                .attachments.push(attachments[m.attachment_id]);
+            }
+          }
+
+          // Convert map to array and clean up empty attachments
+          return Array.from(messageMap.values()).map((msg) => {
+            if (msg.attachments.length === 0) {
+              delete msg.attachments;
+            } else if (!msg.content) {
+              // If no text but has attachments, show attachment types
+              msg.content = msg.attachments
+                .map((a: any) => `[${a.type}]`)
+                .join(" ");
+            }
+            return msg;
+          });
+        })(),
+      };
+
+      return JSON.stringify(response, null, 2);
+    }
+
+    case "messages_get_attachment": {
+      if (!params.id) throw new Error("Missing required parameter: id");
+
+      // Parse attachment ID (format: att_12345)
+      const match = params.id.match(/^att_(\d+)$/);
+      if (!match) {
+        throw new Error(
+          `Invalid attachment ID format: ${params.id}. Expected format: att_12345`,
+        );
+      }
+      const rowId = match[1];
+
+      const sql = `
+        SELECT ROWID, filename, mime_type, transfer_name, total_bytes
+        FROM attachment
+        WHERE ROWID = ${rowId}`;
+
+      const rows = queryMessagesDBRows(sql);
+      if (rows.length === 0) {
+        throw new Error(`Attachment not found: ${params.id}`);
+      }
+
+      const att = rows[0];
+      // Attachment filenames start with ~/ which needs expansion
+      const filePath = att.filename?.startsWith("~/")
+        ? att.filename.replace("~", process.env.HOME || "")
+        : att.filename;
+
+      return JSON.stringify(
+        {
+          id: params.id,
+          type: getAttachmentType(att.mime_type, att.filename),
+          filename: att.transfer_name || att.filename?.split("/").pop(),
+          mime_type: att.mime_type,
+          size_bytes: att.total_bytes,
+          path: filePath,
+        },
+        null,
+        2,
+      );
     }
 
     // ============== NOTES ==============
@@ -1416,8 +1904,7 @@ async function executeOperation(
         throw new Error("Missing required parameter: message");
 
       // Validate JID format - help users who try to use phone numbers directly
-      // Coerce to string first to handle numeric inputs gracefully
-      const to = String(params.to).trim();
+      const to = params.to.trim();
       if (!to.includes("@")) {
         throw new Error(
           `Invalid recipient format: "${to}". WhatsApp requires a JID, not a phone number.\n\n` +
@@ -1533,9 +2020,7 @@ async function executeOperation(
 
       const days = Math.min(Math.max(1, params.days || 7), 365);
       const limit = Math.min(Math.max(1, params.limit || 100), 500);
-      // Coerce to string for consistency with whatsapp_send
-      const chatJid = String(params.chatJid);
-      const escaped = escapeSQL(chatJid);
+      const escaped = escapeSQL(params.chatJid);
 
       // Calculate timestamp for N days ago (WhatsApp uses Unix seconds)
       const daysAgoTimestamp =
@@ -1596,8 +2081,8 @@ async function executeOperation(
       const context = {
         conversation: {
           name: chatName,
-          jid: chatJid,
-          type: chatJid.includes("@g.us") ? "group" : "individual",
+          jid: params.chatJid,
+          type: params.chatJid.includes("@g.us") ? "group" : "individual",
         },
         metadata: {
           days_included: days,
