@@ -390,16 +390,24 @@ const operations: Operation[] = [
     example: "machina(action='system_status')",
   },
   // ============== WHATSAPP ==============
+  // WhatsApp uses JIDs (Jabber IDs) to identify users and groups:
+  // - Individual: 15551234567@s.whatsapp.net (country code + number)
+  // - Group: 120363023456789@g.us
+  // Phone numbers alone don't work - use contacts/chats to discover JIDs first.
   {
     name: "whatsapp_send",
-    description: "Send a WhatsApp message to a contact or group",
+    description:
+      "Send a WhatsApp message to a contact or group. Requires a JID (not a phone number). " +
+      "To find someone's JID: use whatsapp_contacts(query='name') first. " +
+      "To find a group JID: use whatsapp_chats() first.",
     parameters: [
       {
         name: "to",
         type: "string",
         required: true,
         description:
-          "Recipient JID (e.g., '15551234567@s.whatsapp.net' or group JID)",
+          "Recipient JID. Individual: '15551234567@s.whatsapp.net', Group: '120363...@g.us'. " +
+          "Use whatsapp_contacts or whatsapp_chats to discover JIDs.",
       },
       {
         name: "message",
@@ -414,7 +422,9 @@ const operations: Operation[] = [
   },
   {
     name: "whatsapp_chats",
-    description: "List WhatsApp conversations with recent activity",
+    description:
+      "List WhatsApp conversations sorted by recent activity. Essential for discovering group JIDs " +
+      "and seeing who you've been chatting with. Returns both individual and group chats.",
     parameters: [
       {
         name: "limit",
@@ -435,13 +445,16 @@ const operations: Operation[] = [
   },
   {
     name: "whatsapp_messages",
-    description: "Read messages from a specific WhatsApp chat",
+    description:
+      "Read messages from a specific WhatsApp chat. Get the JID from whatsapp_chats or " +
+      "whatsapp_contacts first. Returns messages in chronological order with sender identification.",
     parameters: [
       {
         name: "chatJid",
         type: "string",
         required: true,
-        description: "Chat JID (e.g., '15551234567@s.whatsapp.net')",
+        description:
+          "Chat JID from whatsapp_chats or whatsapp_contacts (e.g., '15551234567@s.whatsapp.net')",
       },
       {
         name: "limit",
@@ -451,13 +464,16 @@ const operations: Operation[] = [
         default: 20,
       },
     ],
-    returns: "Messages with timestamp, sender, and content",
+    returns:
+      "Messages with timestamp, sender (Me or contact name), and content",
     example:
       "machina(action='whatsapp_messages', params={chatJid: '15551234567@s.whatsapp.net', limit: 50})",
   },
   {
     name: "whatsapp_search",
-    description: "Search WhatsApp messages by text content",
+    description:
+      "Search across all WhatsApp messages by text content. Returns matching messages with " +
+      "conversation context (chat name, sender). Useful for finding specific discussions or topics.",
     parameters: [
       {
         name: "query",
@@ -473,13 +489,15 @@ const operations: Operation[] = [
         default: 20,
       },
     ],
-    returns: "Matching messages with timestamp, sender, chat, and content",
+    returns: "Matching messages with timestamp, sender, chat name, and content",
     example:
-      "machina(action='whatsapp_search', params={query: 'meeting', limit: 10})",
+      "machina(action='whatsapp_search', params={query: 'meeting tomorrow', limit: 10})",
   },
   {
     name: "whatsapp_contacts",
-    description: "Search WhatsApp contacts by name or phone number",
+    description:
+      "Search WhatsApp contacts to find someone's JID. This is how you discover who you can message. " +
+      "Search by name or phone number. Returns JIDs that can be used with whatsapp_send and whatsapp_messages.",
     parameters: [
       {
         name: "query",
@@ -495,23 +513,60 @@ const operations: Operation[] = [
         default: 20,
       },
     ],
-    returns: "List of contacts with name and JID",
+    returns: "List of contacts with name and JID (use JID for messaging)",
     example:
-      "machina(action='whatsapp_contacts', params={query: 'John', limit: 10})",
+      "machina(action='whatsapp_contacts', params={query: 'John Smith', limit: 10})",
+  },
+  {
+    name: "whatsapp_chat_context",
+    description:
+      "Get a WhatsApp conversation formatted for LLM analysis. Returns messages in a structured format " +
+      "with clear identification of who sent each message (you vs others), conversation metadata, " +
+      "and message counts. Ideal for AI assistants analyzing message history.",
+    parameters: [
+      {
+        name: "chatJid",
+        type: "string",
+        required: true,
+        description:
+          "Chat JID from whatsapp_chats or whatsapp_contacts (e.g., '15551234567@s.whatsapp.net')",
+      },
+      {
+        name: "days",
+        type: "number",
+        required: false,
+        description: "Number of days of history to include",
+        default: 7,
+      },
+      {
+        name: "limit",
+        type: "number",
+        required: false,
+        description: "Maximum number of messages to return",
+        default: 100,
+      },
+    ],
+    returns:
+      "JSON object with conversation metadata and messages array in LLM-friendly format",
+    example:
+      "machina(action='whatsapp_chat_context', params={chatJid: '15551234567@s.whatsapp.net', days: 7})",
   },
   {
     name: "whatsapp_status",
-    description: "Check WhatsApp connection status",
+    description:
+      "Check WhatsApp connection status. Use before sending messages to verify the service is connected, " +
+      "or to diagnose issues when sends fail. Shows connected user info.",
     parameters: [],
-    returns: "Connection status and logged-in user",
+    returns:
+      "Connection status (connected/disconnected) and logged-in user info",
     example: "machina(action='whatsapp_status')",
   },
   {
     name: "whatsapp_raw_sql",
     description:
       "Execute a raw SQL query against the WhatsApp database (READ-ONLY). " +
-      "Use this for advanced queries not covered by standard operations. " +
-      "Tables: chats (jid, name, last_message_time), messages (id, chat_jid, sender, content, timestamp, is_from_me), contacts (jid, name, notify, phone_number).",
+      "For advanced queries not covered by standard operations. " +
+      "Tables: chats, messages, contacts. See knowledge/reference/whatsapp-mcp-ts.md for schema.",
     parameters: [
       {
         name: "sql",
@@ -548,7 +603,8 @@ const services: ServiceDef[] = [
   {
     name: "whatsapp",
     displayName: "WhatsApp",
-    description: "Read WhatsApp messages and chats",
+    description:
+      "Send and read WhatsApp messages. Use contacts/chats to discover JIDs first.",
     prefix: "whatsapp_",
   },
   {
@@ -585,6 +641,17 @@ function stripPrefix(opName: string, prefix: string): string {
   return opName.startsWith(prefix) ? opName.slice(prefix.length) : opName;
 }
 
+// Service-specific workflow hints
+const serviceWorkflows: Record<string, string[]> = {
+  whatsapp: [
+    "\nCommon workflows:",
+    "  • Message someone: contacts(query='name') → send(to='<jid>', message='...')",
+    "  • Read a chat: chats() → messages(chatJid='<jid>')",
+    "  • AI analysis: chats() → chat_context(chatJid='<jid>', days=7)",
+    "\nNote: WhatsApp uses JIDs (e.g., '15551234567@s.whatsapp.net'), not phone numbers.",
+  ],
+};
+
 // Generate describe output for a specific service
 function describeService(service: ServiceDef): string {
   const ops = getServiceOperations(service);
@@ -599,6 +666,12 @@ function describeService(service: ServiceDef): string {
     lines.push(
       `  ${shortName}${requiredParams ? `(${requiredParams})` : ""} - ${op.description.split(".")[0]}`,
     );
+  }
+
+  // Add service-specific workflow hints
+  const workflows = serviceWorkflows[service.name];
+  if (workflows) {
+    lines.push(...workflows);
   }
 
   lines.push("\n---");
@@ -1342,8 +1415,20 @@ async function executeOperation(
       if (!params.message)
         throw new Error("Missing required parameter: message");
 
+      // Validate JID format - help users who try to use phone numbers directly
+      const to = params.to.trim();
+      if (!to.includes("@")) {
+        throw new Error(
+          `Invalid recipient format: "${to}". WhatsApp requires a JID, not a phone number.\n\n` +
+            `To find someone's JID:\n` +
+            `  1. whatsapp(action='contacts', params={query: 'name or number'})\n` +
+            `  2. Use the JID from the result (e.g., '15551234567@s.whatsapp.net')\n\n` +
+            `For groups, use whatsapp(action='chats') to find group JIDs.`,
+        );
+      }
+
       const result = await callWhatsAppAPI("/api/send", "POST", {
-        recipient: params.to,
+        recipient: to,
         message: params.message,
       });
 
@@ -1439,6 +1524,94 @@ async function executeOperation(
         return `No contacts found matching: ${params.query}`;
 
       return rows.map((r) => `${r.name || "Unknown"} (${r.jid})`).join("\n");
+    }
+
+    case "whatsapp_chat_context": {
+      if (!params.chatJid)
+        throw new Error("Missing required parameter: chatJid");
+
+      const days = Math.min(Math.max(1, params.days || 7), 365);
+      const limit = Math.min(Math.max(1, params.limit || 100), 500);
+      const escaped = escapeSQL(params.chatJid);
+
+      // Calculate timestamp for N days ago (WhatsApp uses Unix seconds)
+      const daysAgoTimestamp =
+        Math.floor(Date.now() / 1000) - days * 24 * 60 * 60;
+
+      // Get messages
+      const messagesSql = `
+        SELECT
+          timestamp,
+          is_from_me,
+          sender,
+          content
+        FROM messages
+        WHERE chat_jid = '${escaped}'
+          AND timestamp > ${daysAgoTimestamp}
+        ORDER BY timestamp ASC
+        LIMIT ${limit}`;
+
+      const messages = await queryWhatsAppDB(messagesSql);
+
+      if (messages.length === 0) {
+        return JSON.stringify(
+          {
+            error: `No messages found for "${params.chatJid}" in the last ${days} days`,
+          },
+          null,
+          2,
+        );
+      }
+
+      // Get chat metadata
+      const metaSql = `
+        SELECT name FROM chats WHERE jid = '${escaped}'`;
+      const chatMeta = await queryWhatsAppDB(metaSql);
+      const chatName = chatMeta[0]?.name || params.chatJid;
+
+      // Get conversation stats
+      const statsSql = `
+        SELECT
+          MIN(timestamp) as first_message,
+          MAX(timestamp) as last_message,
+          COUNT(*) as total_messages,
+          SUM(CASE WHEN is_from_me = 1 THEN 1 ELSE 0 END) as from_you,
+          SUM(CASE WHEN is_from_me = 0 THEN 1 ELSE 0 END) as from_them
+        FROM messages
+        WHERE chat_jid = '${escaped}'
+          AND timestamp > ${daysAgoTimestamp}`;
+      const stats = (await queryWhatsAppDB(statsSql))[0];
+
+      // Format messages for LLM analysis
+      const formattedMessages = messages.map((m: any) => ({
+        timestamp: new Date(m.timestamp * 1000).toISOString(),
+        sender: m.is_from_me ? "You" : m.sender || "Them",
+        content: m.content,
+      }));
+
+      // Build LLM-friendly response
+      const context = {
+        conversation: {
+          name: chatName,
+          jid: params.chatJid,
+          type: params.chatJid.includes("@g.us") ? "group" : "individual",
+        },
+        metadata: {
+          days_included: days,
+          first_message: stats.first_message
+            ? new Date(stats.first_message * 1000).toISOString()
+            : null,
+          last_message: stats.last_message
+            ? new Date(stats.last_message * 1000).toISOString()
+            : null,
+          total_messages: stats.total_messages,
+          from_you: stats.from_you,
+          from_them: stats.from_them,
+        },
+        messages: formattedMessages,
+      };
+
+      return JSON.stringify(context, null, 2);
     }
 
     case "whatsapp_raw_sql": {
