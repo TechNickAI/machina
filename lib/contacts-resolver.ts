@@ -2,7 +2,8 @@
  * Contact resolution from macOS Contacts (AddressBook)
  *
  * Provides fast contact name lookup by building an in-memory cache
- * from the AddressBook SQLite databases.
+ * from the AddressBook SQLite databases. Includes fuzzy matching for
+ * typo tolerance (e.g., "Julianna" → "Juliana Martinez").
  */
 
 import { exec } from "node:child_process";
@@ -11,6 +12,70 @@ import Database from "better-sqlite3";
 import { normalizePhone, isPhoneNumber } from "./utils.js";
 
 const execAsync = promisify(exec);
+
+/** Contact match result with similarity score */
+export interface ContactMatch {
+  name: string;
+  identifier: string; // phone, email, or JID
+  score: number; // 0-1 similarity (1 = exact match)
+}
+
+/** Result of resolving a contact query */
+export interface ResolveResult {
+  type: "found" | "ambiguous" | "not_found";
+  match?: ContactMatch;
+  matches?: ContactMatch[];
+  suggestions?: string[];
+}
+
+/**
+ * Calculate Levenshtein distance between two strings.
+ * Returns edit distance (0 = identical).
+ */
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+
+  // Early exit for empty strings
+  if (m === 0) return n;
+  if (n === 0) return m;
+
+  // Create distance matrix
+  const dp: number[][] = Array(m + 1)
+    .fill(null)
+    .map(() => Array(n + 1).fill(0));
+
+  // Initialize first row and column
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  // Fill in the rest
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1, // deletion
+        dp[i][j - 1] + 1, // insertion
+        dp[i - 1][j - 1] + cost // substitution
+      );
+    }
+  }
+
+  return dp[m][n];
+}
+
+/**
+ * Calculate similarity ratio between two strings (0-1).
+ * Uses Levenshtein distance normalized by max string length.
+ */
+function similarity(a: string, b: string): number {
+  const aLower = a.toLowerCase();
+  const bLower = b.toLowerCase();
+  const maxLen = Math.max(aLower.length, bLower.length);
+  if (maxLen === 0) return 1;
+  const distance = levenshteinDistance(aLower, bLower);
+  return 1 - distance / maxLen;
+}
 
 /** Cache of phone/email → contact name */
 let contactCache: Map<string, string> | null = null;
@@ -189,4 +254,131 @@ export async function getContactCache(): Promise<Map<string, string>> {
 export function clearContactCache(): void {
   contactCache = null;
   contactCacheTime = 0;
+}
+
+/**
+ * Resolve a contact query with fuzzy matching.
+ *
+ * Resolution order:
+ * 1. Exact match on name (case-insensitive)
+ * 2. Exact match on identifier (phone/email)
+ * 3. Fuzzy match on name (Levenshtein > 0.6)
+ * 4. Partial match on name (contains query)
+ *
+ * @param query - Name, phone number, or email to search for
+ * @returns Resolution result with match(es) or suggestions
+ */
+export async function resolveContact(query: string): Promise<ResolveResult> {
+  const cache = await ensureFreshCache();
+  const queryLower = query.toLowerCase().trim();
+
+  // Build reverse index: name → handles
+  const nameToHandles = new Map<string, string[]>();
+  for (const [handle, name] of cache.entries()) {
+    const nameLower = name.toLowerCase();
+    if (!nameToHandles.has(nameLower)) {
+      nameToHandles.set(nameLower, []);
+    }
+    nameToHandles.get(nameLower)!.push(handle);
+  }
+
+  // 1. Exact match on name
+  if (nameToHandles.has(queryLower)) {
+    const handles = nameToHandles.get(queryLower)!;
+    // Prefer phone numbers over normalized versions
+    const bestHandle = handles.find((h) => h.includes("+")) || handles[0];
+    const name = cache.get(bestHandle)!;
+    return {
+      type: "found",
+      match: { name, identifier: bestHandle, score: 1.0 },
+    };
+  }
+
+  // 2. Exact match on identifier (phone/email)
+  if (cache.has(queryLower)) {
+    const name = cache.get(queryLower)!;
+    return {
+      type: "found",
+      match: { name, identifier: query, score: 1.0 },
+    };
+  }
+
+  // Try normalized phone
+  if (isPhoneNumber(query)) {
+    const normalized = normalizePhone(query);
+    if (cache.has(normalized)) {
+      const name = cache.get(normalized)!;
+      return {
+        type: "found",
+        match: { name, identifier: query, score: 1.0 },
+      };
+    }
+  }
+
+  // 3. Fuzzy match on name
+  const fuzzyMatches: ContactMatch[] = [];
+  const seenNames = new Set<string>();
+
+  for (const [nameLower, handles] of nameToHandles.entries()) {
+    const score = similarity(queryLower, nameLower);
+    if (score > 0.6 && !seenNames.has(nameLower)) {
+      seenNames.add(nameLower);
+      const bestHandle = handles.find((h) => h.includes("+")) || handles[0];
+      const name = cache.get(bestHandle)!;
+      fuzzyMatches.push({ name, identifier: bestHandle, score });
+    }
+  }
+
+  // Sort by score descending
+  fuzzyMatches.sort((a, b) => b.score - a.score);
+
+  // High-confidence single match (score > 0.8)
+  if (fuzzyMatches.length === 1 && fuzzyMatches[0].score > 0.8) {
+    return {
+      type: "found",
+      match: fuzzyMatches[0],
+    };
+  }
+
+  // Multiple fuzzy matches - return for disambiguation
+  if (fuzzyMatches.length > 0) {
+    return {
+      type: "ambiguous",
+      matches: fuzzyMatches.slice(0, 5),
+      suggestions: [`Did you mean: ${fuzzyMatches.map((f) => f.name).join(", ")}?`],
+    };
+  }
+
+  // 4. Partial match (contains query)
+  const partialMatches: ContactMatch[] = [];
+  for (const [nameLower, handles] of nameToHandles.entries()) {
+    if (nameLower.includes(queryLower) && !seenNames.has(nameLower)) {
+      const bestHandle = handles.find((h) => h.includes("+")) || handles[0];
+      const name = cache.get(bestHandle)!;
+      partialMatches.push({ name, identifier: bestHandle, score: 0.7 });
+    }
+  }
+
+  if (partialMatches.length === 1) {
+    return { type: "found", match: partialMatches[0] };
+  }
+
+  if (partialMatches.length > 0) {
+    return {
+      type: "ambiguous",
+      matches: partialMatches.slice(0, 5),
+      suggestions: [`Found partial matches: ${partialMatches.map((m) => m.name).join(", ")}`],
+    };
+  }
+
+  // 5. Not found - provide helpful suggestions
+  return {
+    type: "not_found",
+    suggestions: [
+      `No contact matching "${query}"`,
+      "Try: messages.conversations() to see recent chats",
+      "Try: contacts.search(name='partial name')",
+      "Or use phone number/email directly",
+    ],
+  };
 }
