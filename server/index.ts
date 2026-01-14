@@ -25,6 +25,8 @@ const VERSION = pkg.version;
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { MCPToolResponse, createResponse, createErrorResponse } from "../lib/response-helpers.js";
+import { resolveContact } from "../lib/contacts-resolver.js";
 
 const execAsync = promisify(exec);
 
@@ -65,9 +67,9 @@ interface Operation {
 }
 
 const operations: Operation[] = [
-  // ============== MESSAGES ==============
+  // ============== IMESSAGE ==============
   {
-    name: "messages_send",
+    name: "imessage_send",
     description:
       "Send an iMessage to a contact. Accepts contact name, phone number, or email. " +
       "Returns disambiguation options if multiple contacts match.",
@@ -88,10 +90,10 @@ const operations: Operation[] = [
       },
     ],
     returns: "Structured response: success confirmation or disambiguation options",
-    example: "machina(action='messages.send', params={to: 'Mom', message: 'Hello!'})",
+    example: "machina(action='imessage.send', params={to: 'Mom', message: 'Hello!'})",
   },
   {
-    name: "messages_read",
+    name: "imessage_read",
     description: "Read recent messages from a specific contact or conversation",
     parameters: [
       {
@@ -109,10 +111,10 @@ const operations: Operation[] = [
       },
     ],
     returns: "Messages with timestamp, sender (Me or contact), and text",
-    example: "machina(action='messages.read', params={contact: '+15551234567', limit: 50})",
+    example: "machina(action='imessage.read', params={contact: '+15551234567', limit: 50})",
   },
   {
-    name: "messages_recent",
+    name: "imessage_recent",
     description: "Get most recent messages across all conversations",
     parameters: [
       {
@@ -124,10 +126,10 @@ const operations: Operation[] = [
       },
     ],
     returns: "Recent messages with timestamp, sender, and text",
-    example: "machina(action='messages.recent', params={limit: 10})",
+    example: "machina(action='imessage.recent', params={limit: 10})",
   },
   {
-    name: "messages_search",
+    name: "imessage_search",
     description: "Search messages by text content",
     parameters: [
       {
@@ -145,10 +147,10 @@ const operations: Operation[] = [
       },
     ],
     returns: "Matching messages with timestamp, sender, and text",
-    example: "machina(action='messages.search', params={query: 'meeting tomorrow', limit: 10})",
+    example: "machina(action='imessage.search', params={query: 'meeting tomorrow', limit: 10})",
   },
   {
-    name: "messages_conversations",
+    name: "imessage_conversations",
     description: "List all conversations/chats with recent activity",
     parameters: [
       {
@@ -160,10 +162,10 @@ const operations: Operation[] = [
       },
     ],
     returns: "List of conversations with participant info and last message preview",
-    example: "machina(action='messages.conversations', params={limit: 10})",
+    example: "machina(action='imessage.conversations', params={limit: 10})",
   },
   {
-    name: "messages_conversation_context",
+    name: "imessage_conversation_context",
     description:
       "Get a conversation formatted for LLM analysis. Returns messages in a structured format " +
       "with clear identification of who sent each message (you vs others), conversation metadata, " +
@@ -192,10 +194,10 @@ const operations: Operation[] = [
     ],
     returns: "JSON object with conversation metadata and messages array in LLM-friendly format",
     example:
-      "machina(action='messages.conversation_context', params={contact: '+15551234567', days: 7})",
+      "machina(action='imessage.conversation_context', params={contact: '+15551234567', days: 7})",
   },
   {
-    name: "messages_get_attachment",
+    name: "imessage_get_attachment",
     description: "Get details about a message attachment by ID",
     parameters: [
       {
@@ -206,7 +208,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Attachment details including file path and MIME type",
-    example: "machina(action='messages.get_attachment', params={id: 'att_12345'})",
+    example: "machina(action='imessage.get_attachment', params={id: 'att_12345'})",
   },
 
   // ============== NOTES ==============
@@ -632,10 +634,10 @@ interface ServiceDef {
 
 const services: ServiceDef[] = [
   {
-    name: "messages",
-    displayName: "Apple Messages",
+    name: "imessage",
+    displayName: "iMessage",
     description: "Read and send iMessages via Apple Messages app",
-    prefix: "messages_",
+    prefix: "imessage_",
   },
   {
     name: "whatsapp",
@@ -814,19 +816,15 @@ function describeOperation(dotAction: string): string {
 
 // Generate MCP tools array (single gateway tool)
 function generateTools() {
-  // Count all operations
-  let totalOps = 0;
-  for (const service of services) {
-    totalOps += getServiceOperations(service).length;
-  }
-
-  // Capability-focused description: what you CAN DO, then how to call it
-  // This helps LLMs understand when to use machina without needing explicit prompting
+  // Show operations with params inline so LLMs can call directly
   const description = [
-    `Control your Mac: send iMessages & WhatsApp, read conversations, create notes & reminders, search contacts.`,
-    `${totalOps} operations across ${services.length} services.`,
-    `Call with action='service.operation' (e.g., messages.send, whatsapp.chats).`,
-    `Start with action='describe' to see all capabilities.`,
+    "Control your Mac: iMessage, WhatsApp, Notes, Reminders, Contacts.",
+    "iMessage: imessage.send(to, message), imessage.read(contact), imessage.conversations(), imessage.search(query).",
+    "WhatsApp: whatsapp.chats(), whatsapp.messages(contact), whatsapp.send(to, message), whatsapp.search(query).",
+    "Notes: notes.list(), notes.read(title), notes.create(title, body), notes.search(query).",
+    "Reminders: reminders.list(), reminders.create(title), reminders.complete(title).",
+    "Contacts: contacts.search(name), contacts.get(name).",
+    "Use action='describe' for parameter details.",
   ].join(" ");
 
   return [
@@ -839,12 +837,12 @@ function generateTools() {
           action: {
             type: "string",
             description:
-              "Format: 'service.operation'. Examples: messages.send, messages.recent, whatsapp.chats, notes.create. Use 'describe' to see all.",
+              "Format: 'service.operation' (e.g., imessage.send, whatsapp.chats). Use 'describe' for all operations.",
           },
           params: {
             type: "object",
             description:
-              "Parameters for the operation. Use action='describe', params={operation: 'service.op'} for details.",
+              "Operation parameters. Use action='describe', params={operation: 'x'} for details.",
           },
         },
         required: ["action"],
@@ -1384,14 +1382,15 @@ async function resolveToWhatsAppJid(identifier: string): Promise<ResolveResult> 
 
 // Result type for iMessage contact resolution
 type IMessageResolveResult =
-  | { type: "found"; handle: string; name: string | null }
+  | { type: "found"; handle: string; name: string | null; fuzzy_match?: boolean }
   | {
       type: "ambiguous";
-      matches: Array<{ handle: string; name: string | null }>;
+      matches: Array<{ handle: string; name: string | null; score?: number }>;
     }
-  | { type: "not_found" };
+  | { type: "not_found"; suggestions?: string[] };
 
 // Resolve a contact identifier (name, phone, or email) to an iMessage handle
+// Uses fuzzy matching (Levenshtein distance) for typo tolerance
 // Returns ambiguous result if multiple matches found for name searches
 async function resolveToIMessageHandle(identifier: string): Promise<IMessageResolveResult> {
   const trimmed = identifier.trim();
@@ -1417,44 +1416,43 @@ async function resolveToIMessageHandle(identifier: string): Promise<IMessageReso
     return { type: "found", handle: trimmed, name: null };
   }
 
-  // Name search - look up in Mac Contacts and check for multiple matches
-  // First, try to find matching contacts via contact cache
-  if (!contactCache || Date.now() - contactCacheTime > CONTACT_CACHE_TTL) {
-    contactCache = await buildContactCache();
-    contactCacheTime = Date.now();
+  // Name search - use fuzzy matching from contacts-resolver
+  const resolved = await resolveContact(trimmed);
+
+  if (resolved.type === "found" && resolved.match) {
+    return {
+      type: "found",
+      handle: resolved.match.identifier,
+      name: resolved.match.name,
+      fuzzy_match: resolved.match.score < 1.0,
+    };
   }
 
-  // Search for names matching the identifier
-  const searchLower = trimmed.toLowerCase();
-  const matches: Array<{ handle: string; name: string | null }> = [];
-
-  // Deduplicate by name since cache stores both original and normalized phone numbers
-  const seenNames = new Set<string>();
-
-  for (const [handle, name] of contactCache.entries()) {
-    if (name.toLowerCase().includes(searchLower)) {
-      const nameLower = name.toLowerCase();
-      if (!seenNames.has(nameLower)) {
-        seenNames.add(nameLower);
-        matches.push({ handle, name });
-      }
-    }
+  if (resolved.type === "ambiguous" && resolved.matches) {
+    return {
+      type: "ambiguous",
+      matches: resolved.matches.map((m) => ({
+        handle: m.identifier,
+        name: m.name,
+        score: m.score,
+      })),
+    };
   }
 
-  if (matches.length === 0) {
-    return { type: "not_found" };
-  }
-
-  if (matches.length === 1) {
-    return { type: "found", handle: matches[0].handle, name: matches[0].name };
-  }
-
-  // Multiple matches - return ambiguous result
-  return { type: "ambiguous", matches };
+  // Not found - provide helpful suggestions
+  return {
+    type: "not_found",
+    suggestions: resolved.suggestions || [
+      `No contact matching "${trimmed}"`,
+      "Try: imessage.conversations() to see recent chats",
+      "Or use phone number/email directly",
+    ],
+  };
 }
 
 // Format message rows with resolved contact names
 // Works for both iMessage and WhatsApp - DRY helper
+// Returns structured JSON for LLM consumption
 interface MessageRowInput {
   date?: string;
   timestamp?: string;
@@ -1464,6 +1462,15 @@ interface MessageRowInput {
   text?: string;
   content?: string;
   is_from_me?: boolean | number;
+  chat_name?: string;
+}
+
+interface FormattedMessage {
+  timestamp: string;
+  relative: string;
+  sender: string;
+  is_from_me: boolean;
+  text: string;
   chat_name?: string;
 }
 
@@ -1502,28 +1509,40 @@ async function formatMessagesWithNames(
   const phones = [...new Set([...handleToPhone.values()])];
   const nameMap = await resolveHandlesToNames(phones);
 
-  return rows
-    .map((r) => {
-      const dateVal = (r as any)[dateField] || "";
-      const textVal = (r as any)[textField] || "";
-      const rawHandle = (r as any)[handleField] as string | undefined;
+  // Build structured message array
+  const messages: FormattedMessage[] = rows.map((r) => {
+    const dateVal = (r as any)[dateField] || "";
+    const textVal = (r as any)[textField] || "";
+    const rawHandle = (r as any)[handleField] as string | undefined;
+    const isFromMe = !!r.is_from_me;
 
-      let sender: string;
-      if (r.is_from_me) {
-        sender = "Me";
-      } else if (rawHandle) {
-        const phone = handleToPhone.get(rawHandle) || rawHandle;
-        sender = nameMap.get(phone) || phone;
-      } else {
-        sender = "Unknown";
-      }
+    let sender: string;
+    if (isFromMe) {
+      sender = "Me";
+    } else if (rawHandle) {
+      const phone = handleToPhone.get(rawHandle) || rawHandle;
+      sender = nameMap.get(phone) || phone;
+    } else {
+      sender = "Unknown";
+    }
 
-      if (includeChat && r.chat_name) {
-        return `${dateVal}|${r.chat_name}|${sender}|${textVal}`;
-      }
-      return `${dateVal}|${sender}|${textVal}`;
-    })
-    .join("\n");
+    const msg: FormattedMessage = {
+      timestamp: dateVal,
+      relative: dateVal ? formatRelativeTime(new Date(dateVal)) : "",
+      sender,
+      is_from_me: isFromMe,
+      text: textVal,
+    };
+
+    if (includeChat && r.chat_name) {
+      msg.chat_name = r.chat_name;
+    }
+
+    return msg;
+  });
+
+  // Return as JSON for structured parsing
+  return JSON.stringify({ messages, count: messages.length }, null, 2);
 }
 
 // WhatsApp configuration
@@ -1587,8 +1606,8 @@ function isoToAppleScriptDate(isoDate: string): string {
 // Operation handlers
 async function executeOperation(action: string, params: Record<string, any>): Promise<string> {
   switch (action) {
-    // ============== MESSAGES ==============
-    case "messages_send": {
+    // ============== IMESSAGE ==============
+    case "imessage_send": {
       if (!params.to) throw new Error("Missing required parameter: to");
       if (!params.message) throw new Error("Missing required parameter: message");
 
@@ -1658,10 +1677,10 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       );
     }
 
-    case "messages_read": {
+    case "imessage_read": {
       if (!params.contact) throw new Error("Missing required parameter: contact");
 
-      // Resolve contact to handle with disambiguation
+      // Resolve contact to handle with fuzzy matching for typo tolerance
       const resolved = await resolveToIMessageHandle(params.contact);
 
       if (resolved.type === "not_found") {
@@ -1670,9 +1689,9 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
             not_found: true,
             query: params.contact,
             message: `No iMessage conversation found for "${params.contact}".`,
-            suggestions: [
+            suggestions: resolved.suggestions || [
               "Check the spelling of the contact name",
-              "Use messages_conversations to see active chats",
+              "Use imessage.conversations() to see active chats",
               "Try the phone number or email directly",
             ],
           },
@@ -1691,6 +1710,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
               choice: i + 1,
               name: m.name || "Unknown",
               identifier: m.handle,
+              score: m.score,
             })),
           },
           null,
@@ -1720,10 +1740,26 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
           2
         );
       }
-      return await formatMessagesWithNames(rows);
+
+      // Get formatted messages and add contact metadata
+      const messagesJson = await formatMessagesWithNames(rows);
+      const messagesData = JSON.parse(messagesJson);
+
+      // Add contact resolution info to the response
+      return JSON.stringify(
+        {
+          contact: resolved.handle,
+          contact_name: resolved.name || resolved.handle,
+          fuzzy_match: resolved.fuzzy_match || false,
+          original_query: params.contact,
+          ...messagesData,
+        },
+        null,
+        2
+      );
     }
 
-    case "messages_recent": {
+    case "imessage_recent": {
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
       const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
         m.is_from_me,
@@ -1738,7 +1774,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       return await formatMessagesWithNames(rows);
     }
 
-    case "messages_search": {
+    case "imessage_search": {
       if (!params.query) throw new Error("Missing required parameter: query");
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
       const escapedQuery = escapeSQL(params.query);
@@ -1755,7 +1791,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       return await formatMessagesWithNames(rows);
     }
 
-    case "messages_conversations": {
+    case "imessage_conversations": {
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
       // Get most recent message per handle using subquery for correct last_message
       const sql = `SELECT
@@ -1772,18 +1808,34 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       ORDER BY m.date DESC
       LIMIT ${limit}`;
       const rows = queryMessagesDBRows(sql);
-      if (rows.length === 0) return "No conversations found";
+      if (rows.length === 0) {
+        return JSON.stringify({ conversations: [], message: "No conversations found" });
+      }
 
-      // Skip contact resolution for now (requires Full Disk Access for AddressBook)
-      // Just return raw phone numbers
-      return rows
-        .map((r: any) => {
-          return `${r.participant || "Unknown"}|${r.last_date || ""}|${r.last_message || ""}`;
-        })
-        .join("\n");
+      // Resolve contact names for all participants
+      const participants = rows.map((r: any) => r.participant).filter(Boolean);
+      const nameMap = await resolveHandlesToNames(participants);
+
+      // Build structured conversation list
+      const conversations = rows.map((r: any) => {
+        const participant = r.participant || "Unknown";
+        const contactName = nameMap.get(participant) || participant;
+        const lastDate = r.last_date || "";
+        return {
+          contact: participant,
+          contact_name: contactName,
+          last_message: {
+            timestamp: lastDate,
+            relative: lastDate ? formatRelativeTime(new Date(lastDate)) : "",
+            text: (r.last_message || "").slice(0, 100), // Preview only
+          },
+        };
+      });
+
+      return JSON.stringify({ conversations, count: conversations.length }, null, 2);
     }
 
-    case "messages_conversation_context": {
+    case "imessage_conversation_context": {
       if (!params.contact) throw new Error("Missing required parameter: contact");
 
       const days = Math.min(Math.max(1, params.days || 7), 365);
@@ -1800,7 +1852,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
             message: `No iMessage conversation found for "${params.contact}".`,
             suggestions: [
               "Check the spelling of the contact name",
-              "Use messages_conversations to see active chats",
+              "Use imessage.conversations() to see active chats",
               "Try the phone number or email directly",
             ],
           },
@@ -1993,7 +2045,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       return JSON.stringify(response, null, 2);
     }
 
-    case "messages_get_attachment": {
+    case "imessage_get_attachment": {
       if (!params.id) throw new Error("Missing required parameter: id");
 
       // Parse attachment ID (format: att_12345)
@@ -2997,41 +3049,111 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
 }
 
 // Handle the single gateway tool call (MCP Hubby pattern)
-async function handleGatewayTool(args: Record<string, any>): Promise<string> {
-  const action = args.action as string;
-  const params = (args.params || {}) as Record<string, any>;
+// Returns MCPToolResponse with structuredContent for machine-readable data
+async function handleGatewayTool(args: Record<string, unknown>): Promise<MCPToolResponse> {
+  const action = args.action as string | undefined;
+  const params = (args.params || {}) as Record<string, unknown>;
 
-  // No action = describe all
+  // No action = describe all (smart default)
   if (!action) {
-    return describeAllServices();
+    // If contact provided without action, assume they want to read messages
+    if (params.contact) {
+      const result = await executeOperation("imessage_conversation_context", params);
+      return wrapExecutionResult(result);
+    }
+    return createResponse({
+      help: describeAllServices(),
+      hint: "Specify action='service.operation' to execute",
+    });
   }
 
-  // describe action
+  // describe action - returns structured help
   if (action === "describe") {
+    // Describe specific operation: params={operation: 'imessage.send'}
     if (params.operation) {
-      return describeOperation(params.operation);
+      return createResponse({
+        operation: params.operation,
+        docs: describeOperation(params.operation as string),
+      });
     }
-    return describeAllServices();
+
+    // Describe specific service: params={service: 'messages'}
+    if (params.service) {
+      const serviceName = (params.service as string).toLowerCase();
+      const service = services.find((s) => s.name === serviceName);
+      if (!service) {
+        return createErrorResponse(`Unknown service: ${params.service}`, [
+          `Available services: ${services.map((s) => s.name).join(", ")}`,
+        ]);
+      }
+      const ops = getServiceOperations(service);
+      return createResponse({
+        service: service.name,
+        displayName: service.displayName,
+        description: service.description,
+        operations: ops.map((op) => ({
+          name: `${service.name}.${stripPrefix(op.name, service.prefix)}`,
+          description: op.description.split(".")[0],
+          requiredParams: op.parameters.filter((p) => p.required).map((p) => p.name),
+        })),
+        docs: describeService(service),
+      });
+    }
+
+    // Describe all services
+    return createResponse({
+      services: services.map((s) => ({
+        name: s.name,
+        displayName: s.displayName,
+        description: s.description,
+        operationCount: getServiceOperations(s).length,
+      })),
+      help: describeAllServices(),
+    });
   }
 
   // Convert dot notation to internal name (e.g., "whatsapp.chats" → "whatsapp_chats")
   const internalName = fromDotNotation(action);
   if (!internalName) {
-    // Maybe just a service name? Show helpful error
+    // Maybe just a service name? Show helpful error with operations
     const service = services.find((s) => s.name === action);
     if (service) {
-      throw new Error(
-        `To use ${service.displayName}, specify an operation:\n\n${describeService(service)}`
-      );
+      const ops = getServiceOperations(service);
+      return createErrorResponse(`Specify an operation for ${service.displayName}`, [
+        `Available: ${ops.map((o) => stripPrefix(o.name, service.prefix)).join(", ")}`,
+        `Example: machina(action='${service.name}.${stripPrefix(ops[0]?.name || "", service.prefix)}')`,
+      ]);
     }
     const available = services.map((s) => s.name).join(", ");
-    throw new Error(
-      `Unknown action: ${action}\n\nExpected format: service.operation (e.g., whatsapp.chats)\nAvailable services: ${available}\nUse action='describe' to see all operations.`
-    );
+    return createErrorResponse(`Unknown action: ${action}`, [
+      "Format: service.operation (e.g., imessage.send)",
+      `Services: ${available}`,
+      "Use action='describe' to see all operations",
+    ]);
   }
 
-  // Execute the operation
-  return await executeOperation(internalName, params);
+  // Execute the operation and wrap result
+  const result = await executeOperation(internalName, params);
+  return wrapExecutionResult(result);
+}
+
+/**
+ * Wrap an executeOperation result in MCPToolResponse.
+ * Tries to parse as JSON for structuredContent, falls back to text.
+ */
+function wrapExecutionResult(result: string): MCPToolResponse {
+  // Try to parse as JSON for structured data
+  try {
+    const data = JSON.parse(result);
+    return createResponse(data);
+  } catch {
+    // Not JSON - return as text (for describe outputs, error messages, etc.)
+    return {
+      content: [{ type: "text", text: result }],
+      isError: false,
+      structuredContent: { text: result },
+    };
+  }
 }
 
 // Generate tools dynamically (one per service)
@@ -3051,11 +3173,36 @@ function authenticate(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// MCP server instructions - injected into LLM system prompt
+const SERVER_INSTRUCTIONS = `
+Machina controls Mac apps: iMessage, WhatsApp, Notes, Reminders, Contacts.
+
+**iMessage:**
+- Read messages: machina(action='imessage.read', params={contact: 'Name'})
+- Send message: machina(action='imessage.send', params={to: 'Name', message: '...'})
+- List chats: machina(action='imessage.conversations')
+- Search: machina(action='imessage.search', params={query: 'keyword'})
+
+**WhatsApp:**
+- List chats: machina(action='whatsapp.chats')
+- Read messages: machina(action='whatsapp.messages', params={contact: 'Name'})
+- Send: machina(action='whatsapp.send', params={to: 'Name', message: '...'})
+
+**Pattern:** machina(action='service.operation', params={...})
+**Discovery:** machina(action='describe') shows all operations
+
+Services: imessage, whatsapp, notes, reminders, contacts, system
+`.trim();
+
 // Create MCP server
 function createServer(): Server {
   const server = new Server(
     { name: "machina", version: VERSION },
-    { capabilities: { tools: { listChanged: false } } }
+    {
+      capabilities: { tools: { listChanged: false } },
+      // Server instructions are injected into LLM context so it knows Machina exists
+      instructions: SERVER_INSTRUCTIONS,
+    }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -3067,31 +3214,31 @@ function createServer(): Server {
     const { name, arguments: args } = request.params;
     console.log(`Tool call: ${name}, action: ${args?.action || "none"}`);
 
+    // Helper to create tool response in MCP format
+    const toolResponse = (response: MCPToolResponse) => ({
+      content: response.content,
+      isError: response.isError,
+      structuredContent: response.structuredContent,
+    });
+
     // Single gateway tool pattern - only "machina" tool exists
     if (name !== "machina") {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Unknown tool: ${name}. Use 'machina' with action='service.operation' pattern.`,
-          },
-        ],
-        isError: true,
-      };
+      return toolResponse(
+        createErrorResponse(
+          `Unknown tool: ${name}. Use 'machina' with action='service.operation' pattern.`
+        )
+      );
     }
 
     try {
-      const result = await handleGatewayTool(args || {});
-      console.log(`Result preview: ${result.slice(0, 100)}...`);
-      return {
-        content: [{ type: "text", text: result }],
-      };
-    } catch (error: any) {
-      console.error(`Error:`, error.message);
-      return {
-        content: [{ type: "text", text: `Error: ${error.message}` }],
-        isError: true,
-      };
+      const response = await handleGatewayTool(args || {});
+      const preview = response.content[0]?.text?.slice(0, 100) || "";
+      console.log(`Result preview: ${preview}...`);
+      return toolResponse(response);
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error(`Error:`, err.message);
+      return toolResponse(createErrorResponse(err.message));
     }
   });
 
