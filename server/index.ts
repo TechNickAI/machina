@@ -597,7 +597,7 @@ const operations: Operation[] = [
       "or to diagnose issues when sends fail. Shows connected user info.",
     parameters: [],
     returns: "Connection status (connected/disconnected) and logged-in user info",
-    example: "machina(action='whatsapp_status')",
+    example: "machina(action='whatsapp.status')",
   },
   {
     name: "whatsapp_raw_sql",
@@ -615,7 +615,7 @@ const operations: Operation[] = [
     ],
     returns: "Query results as JSON array",
     example:
-      "machina(action='whatsapp_raw_sql', params={sql: 'SELECT COUNT(*) as total FROM messages'})",
+      "machina(action='whatsapp.raw_sql', params={sql: 'SELECT COUNT(*) as total FROM messages'})",
   },
 ];
 
