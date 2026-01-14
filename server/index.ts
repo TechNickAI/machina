@@ -1528,7 +1528,7 @@ async function formatMessagesWithNames(
 
     const msg: FormattedMessage = {
       timestamp: dateVal,
-      relative: formatRelativeTime(new Date(dateVal)),
+      relative: dateVal ? formatRelativeTime(new Date(dateVal)) : "",
       sender,
       is_from_me: isFromMe,
       text: textVal,

@@ -315,12 +315,16 @@ export async function resolveContact(query: string): Promise<ResolveResult> {
     }
   }
 
-  // 3. Fuzzy match on name
+  // 3. Fuzzy match on name (compare against individual name tokens for better matching)
   const fuzzyMatches: ContactMatch[] = [];
   const seenNames = new Set<string>();
 
   for (const [nameLower, handles] of nameToHandles.entries()) {
-    const score = similarity(queryLower, nameLower);
+    // Split name into tokens and find best token match
+    const nameTokens = nameLower.split(/\s+/);
+    const tokenScores = nameTokens.map((token) => similarity(queryLower, token));
+    const score = Math.max(...tokenScores);
+
     if (score > 0.6 && !seenNames.has(nameLower)) {
       seenNames.add(nameLower);
       const bestHandle = handles.find((h) => h.includes("+")) || handles[0];
