@@ -1,6 +1,6 @@
 {
   "name": "machina-mcp",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "MCP server exposing Mac capabilities (iMessage, Mail, Calendar, Notes, Reminders, WhatsApp) for AI agents",
   "type": "module",
   "main": "server/index.ts",
