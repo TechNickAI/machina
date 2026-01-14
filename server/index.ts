@@ -88,7 +88,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Structured response: success confirmation or disambiguation options",
-    example: "machina(action='messages_send', params={to: 'Mom', message: 'Hello!'})",
+    example: "machina(action='messages.send', params={to: 'Mom', message: 'Hello!'})",
   },
   {
     name: "messages_read",
@@ -109,7 +109,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Messages with timestamp, sender (Me or contact), and text",
-    example: "machina(action='messages_read', params={contact: '+15551234567', limit: 50})",
+    example: "machina(action='messages.read', params={contact: '+15551234567', limit: 50})",
   },
   {
     name: "messages_recent",
@@ -124,7 +124,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Recent messages with timestamp, sender, and text",
-    example: "machina(action='messages_recent', params={limit: 10})",
+    example: "machina(action='messages.recent', params={limit: 10})",
   },
   {
     name: "messages_search",
@@ -145,7 +145,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Matching messages with timestamp, sender, and text",
-    example: "machina(action='messages_search', params={query: 'meeting tomorrow', limit: 10})",
+    example: "machina(action='messages.search', params={query: 'meeting tomorrow', limit: 10})",
   },
   {
     name: "messages_conversations",
@@ -160,7 +160,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "List of conversations with participant info and last message preview",
-    example: "machina(action='messages_conversations', params={limit: 10})",
+    example: "machina(action='messages.conversations', params={limit: 10})",
   },
   {
     name: "messages_conversation_context",
@@ -191,7 +191,8 @@ const operations: Operation[] = [
       },
     ],
     returns: "JSON object with conversation metadata and messages array in LLM-friendly format",
-    example: "machina(action='conversation_context', params={contact: '+15551234567', days: 7})",
+    example:
+      "machina(action='messages.conversation_context', params={contact: '+15551234567', days: 7})",
   },
   {
     name: "messages_get_attachment",
@@ -205,7 +206,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Attachment details including file path and MIME type",
-    example: "machina(action='get_attachment', params={id: 'att_12345'})",
+    example: "machina(action='messages.get_attachment', params={id: 'att_12345'})",
   },
 
   // ============== NOTES ==============
@@ -228,7 +229,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "List of notes with title and folder",
-    example: "machina(action='notes_list', params={limit: 10})",
+    example: "machina(action='notes.list', params={limit: 10})",
   },
   {
     name: "notes_read",
@@ -242,7 +243,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Note content as plain text",
-    example: "machina(action='notes_read', params={title: 'Meeting Notes'})",
+    example: "machina(action='notes.read', params={title: 'Meeting Notes'})",
   },
   {
     name: "notes_create",
@@ -269,7 +270,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Confirmation with note title",
-    example: "machina(action='notes_create', params={title: 'New Note', body: 'Content here'})",
+    example: "machina(action='notes.create', params={title: 'New Note', body: 'Content here'})",
   },
   {
     name: "notes_search",
@@ -290,7 +291,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Matching notes with title and preview",
-    example: "machina(action='notes_search', params={query: 'project'})",
+    example: "machina(action='notes.search', params={query: 'project'})",
   },
 
   // ============== REMINDERS ==============
@@ -313,7 +314,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Reminders grouped by list with due dates",
-    example: "machina(action='reminders_list', params={includeCompleted: false})",
+    example: "machina(action='reminders.list', params={includeCompleted: false})",
   },
   {
     name: "reminders_create",
@@ -346,7 +347,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Confirmation with reminder title",
-    example: "machina(action='reminders_create', params={title: 'Call mom', list: 'Personal'})",
+    example: "machina(action='reminders.create', params={title: 'Call mom', list: 'Personal'})",
   },
   {
     name: "reminders_complete",
@@ -366,7 +367,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Confirmation message",
-    example: "machina(action='reminders_complete', params={title: 'Call mom'})",
+    example: "machina(action='reminders.complete', params={title: 'Call mom'})",
   },
 
   // ============== CONTACTS ==============
@@ -382,7 +383,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "List of matching contacts with phone numbers and emails",
-    example: "machina(action='contacts_search', params={name: 'John'})",
+    example: "machina(action='contacts.search', params={name: 'John'})",
   },
   {
     name: "contacts_get",
@@ -396,7 +397,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Full contact details including phones, emails, addresses",
-    example: "machina(action='contacts_get', params={name: 'John Smith'})",
+    example: "machina(action='contacts.get', params={name: 'John Smith'})",
   },
 
   // ============== RAW APPLESCRIPT ==============
@@ -415,7 +416,7 @@ const operations: Operation[] = [
     ],
     returns: "AppleScript execution result",
     example:
-      "machina(action='system_raw_applescript', params={script: 'tell application \"Finder\" to get name of startup disk'})",
+      "machina(action='system.raw_applescript', params={script: 'tell application \"Finder\" to get name of startup disk'})",
   },
 
   // ============== SYSTEM ==============
@@ -426,14 +427,14 @@ const operations: Operation[] = [
       "Note: Requires server restart to apply changes.",
     parameters: [],
     returns: "Update status with list of changes",
-    example: "machina(action='system_update')",
+    example: "machina(action='system.update')",
   },
   {
     name: "system_status",
     description: "Get current Machina version and system status",
     parameters: [],
     returns: "Version info, uptime, and health status",
-    example: "machina(action='system_status')",
+    example: "machina(action='system.status')",
   },
   // ============== WHATSAPP ==============
   // WhatsApp uses JIDs (Jabber IDs) to identify users and groups:
@@ -462,7 +463,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Structured response: success confirmation or disambiguation options",
-    example: "machina(action='whatsapp_send', params={to: 'John', message: 'Hello!'})",
+    example: "machina(action='whatsapp.send', params={to: 'John', message: 'Hello!'})",
   },
   {
     name: "whatsapp_chats",
@@ -485,7 +486,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "List of chats with name, JID, and last message time",
-    example: "machina(action='whatsapp_chats', params={limit: 10})",
+    example: "machina(action='whatsapp.chats', params={limit: 10})",
   },
   {
     name: "whatsapp_messages",
@@ -509,7 +510,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Messages with timestamp, sender (Me or contact name), and content",
-    example: "machina(action='whatsapp_messages', params={contact: 'John', limit: 50})",
+    example: "machina(action='whatsapp.messages', params={contact: 'John', limit: 50})",
   },
   {
     name: "whatsapp_search",
@@ -532,7 +533,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Matching messages with timestamp, sender, chat name, and content",
-    example: "machina(action='whatsapp_search', params={query: 'meeting tomorrow', limit: 10})",
+    example: "machina(action='whatsapp.search', params={query: 'meeting tomorrow', limit: 10})",
   },
   {
     name: "whatsapp_contacts",
@@ -555,7 +556,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "List of contacts with name and JID (use JID for messaging)",
-    example: "machina(action='whatsapp_contacts', params={query: 'John Smith', limit: 10})",
+    example: "machina(action='whatsapp.contacts', params={query: 'John Smith', limit: 10})",
   },
   {
     name: "whatsapp_chat_context",
@@ -587,7 +588,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "JSON object with conversation metadata and messages array in LLM-friendly format",
-    example: "machina(action='whatsapp_chat_context', params={contact: 'John', days: 7})",
+    example: "machina(action='whatsapp.chat_context', params={contact: 'John', days: 7})",
   },
   {
     name: "whatsapp_status",
@@ -596,7 +597,7 @@ const operations: Operation[] = [
       "or to diagnose issues when sends fail. Shows connected user info.",
     parameters: [],
     returns: "Connection status (connected/disconnected) and logged-in user info",
-    example: "machina(action='whatsapp_status')",
+    example: "machina(action='whatsapp.status')",
   },
   {
     name: "whatsapp_raw_sql",
@@ -614,7 +615,7 @@ const operations: Operation[] = [
     ],
     returns: "Query results as JSON array",
     example:
-      "machina(action='whatsapp_raw_sql', params={sql: 'SELECT COUNT(*) as total FROM messages'})",
+      "machina(action='whatsapp.raw_sql', params={sql: 'SELECT COUNT(*) as total FROM messages'})",
   },
 ];
 
@@ -802,7 +803,11 @@ function describeOperation(dotAction: string): string {
   }
 
   lines.push(`\nReturns: ${op.returns}`);
-  lines.push(`\nUsage: machina(action='${dotAction}', params={...})`);
+
+  // Include example if available - shows exact call syntax
+  if (op.example) {
+    lines.push(`\nExample: ${op.example}`);
+  }
 
   return lines.join("\n");
 }
@@ -815,26 +820,32 @@ function generateTools() {
     totalOps += getServiceOperations(service).length;
   }
 
-  // Pick top operations for the description (most commonly used)
-  const topOps = [
-    "whatsapp.chats",
-    "whatsapp.send(to, message)",
-    "messages.recent",
-    "messages.send(to, message)",
-    "notes.list",
-    "reminders.list",
-  ];
-  const remaining = totalOps - topOps.length;
+  // Capability-focused description: what you CAN DO, then how to call it
+  // This helps LLMs understand when to use machina without needing explicit prompting
+  const description = [
+    `Control your Mac: send iMessages & WhatsApp, read conversations, create notes & reminders, search contacts.`,
+    `${totalOps} operations across ${services.length} services.`,
+    `Call with action='service.operation' (e.g., messages.send, whatsapp.chats).`,
+    `Start with action='describe' to see all capabilities.`,
+  ].join(" ");
 
   return [
     {
       name: "machina",
-      description: `Access Mac apps (Messages, WhatsApp, Notes, Reminders, Contacts). Top operations: ${topOps.join(", ")} +${remaining} more. action='describe' for full list`,
+      description,
       inputSchema: {
         type: "object",
         properties: {
-          action: { type: "string" },
-          params: { type: "object" },
+          action: {
+            type: "string",
+            description:
+              "Format: 'service.operation'. Examples: messages.send, messages.recent, whatsapp.chats, notes.create. Use 'describe' to see all.",
+          },
+          params: {
+            type: "object",
+            description:
+              "Parameters for the operation. Use action='describe', params={operation: 'service.op'} for details.",
+          },
         },
         required: ["action"],
       },
