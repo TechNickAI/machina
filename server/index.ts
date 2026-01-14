@@ -3075,12 +3075,38 @@ async function handleGatewayTool(args: Record<string, unknown>): Promise<MCPTool
 
   // describe action - returns structured help
   if (action === "describe") {
+    // Describe specific operation: params={operation: 'messages.send'}
     if (params.operation) {
       return createResponse({
         operation: params.operation,
         docs: describeOperation(params.operation as string),
       });
     }
+
+    // Describe specific service: params={service: 'messages'}
+    if (params.service) {
+      const serviceName = (params.service as string).toLowerCase();
+      const service = services.find((s) => s.name === serviceName);
+      if (!service) {
+        return createErrorResponse(`Unknown service: ${params.service}`, [
+          `Available services: ${services.map((s) => s.name).join(", ")}`,
+        ]);
+      }
+      const ops = getServiceOperations(service);
+      return createResponse({
+        service: service.name,
+        displayName: service.displayName,
+        description: service.description,
+        operations: ops.map((op) => ({
+          name: `${service.name}.${stripPrefix(op.name, service.prefix)}`,
+          description: op.description.split(".")[0],
+          requiredParams: op.parameters.filter((p) => p.required).map((p) => p.name),
+        })),
+        docs: describeService(service),
+      });
+    }
+
+    // Describe all services
     return createResponse({
       services: services.map((s) => ({
         name: s.name,
