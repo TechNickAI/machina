@@ -67,9 +67,9 @@ interface Operation {
 }
 
 const operations: Operation[] = [
-  // ============== MESSAGES ==============
+  // ============== IMESSAGE ==============
   {
-    name: "messages_send",
+    name: "imessage_send",
     description:
       "Send an iMessage to a contact. Accepts contact name, phone number, or email. " +
       "Returns disambiguation options if multiple contacts match.",
@@ -90,10 +90,10 @@ const operations: Operation[] = [
       },
     ],
     returns: "Structured response: success confirmation or disambiguation options",
-    example: "machina(action='messages.send', params={to: 'Mom', message: 'Hello!'})",
+    example: "machina(action='imessage.send', params={to: 'Mom', message: 'Hello!'})",
   },
   {
-    name: "messages_read",
+    name: "imessage_read",
     description: "Read recent messages from a specific contact or conversation",
     parameters: [
       {
@@ -111,10 +111,10 @@ const operations: Operation[] = [
       },
     ],
     returns: "Messages with timestamp, sender (Me or contact), and text",
-    example: "machina(action='messages.read', params={contact: '+15551234567', limit: 50})",
+    example: "machina(action='imessage.read', params={contact: '+15551234567', limit: 50})",
   },
   {
-    name: "messages_recent",
+    name: "imessage_recent",
     description: "Get most recent messages across all conversations",
     parameters: [
       {
@@ -126,10 +126,10 @@ const operations: Operation[] = [
       },
     ],
     returns: "Recent messages with timestamp, sender, and text",
-    example: "machina(action='messages.recent', params={limit: 10})",
+    example: "machina(action='imessage.recent', params={limit: 10})",
   },
   {
-    name: "messages_search",
+    name: "imessage_search",
     description: "Search messages by text content",
     parameters: [
       {
@@ -147,10 +147,10 @@ const operations: Operation[] = [
       },
     ],
     returns: "Matching messages with timestamp, sender, and text",
-    example: "machina(action='messages.search', params={query: 'meeting tomorrow', limit: 10})",
+    example: "machina(action='imessage.search', params={query: 'meeting tomorrow', limit: 10})",
   },
   {
-    name: "messages_conversations",
+    name: "imessage_conversations",
     description: "List all conversations/chats with recent activity",
     parameters: [
       {
@@ -162,10 +162,10 @@ const operations: Operation[] = [
       },
     ],
     returns: "List of conversations with participant info and last message preview",
-    example: "machina(action='messages.conversations', params={limit: 10})",
+    example: "machina(action='imessage.conversations', params={limit: 10})",
   },
   {
-    name: "messages_conversation_context",
+    name: "imessage_conversation_context",
     description:
       "Get a conversation formatted for LLM analysis. Returns messages in a structured format " +
       "with clear identification of who sent each message (you vs others), conversation metadata, " +
@@ -194,10 +194,10 @@ const operations: Operation[] = [
     ],
     returns: "JSON object with conversation metadata and messages array in LLM-friendly format",
     example:
-      "machina(action='messages.conversation_context', params={contact: '+15551234567', days: 7})",
+      "machina(action='imessage.conversation_context', params={contact: '+15551234567', days: 7})",
   },
   {
-    name: "messages_get_attachment",
+    name: "imessage_get_attachment",
     description: "Get details about a message attachment by ID",
     parameters: [
       {
@@ -208,7 +208,7 @@ const operations: Operation[] = [
       },
     ],
     returns: "Attachment details including file path and MIME type",
-    example: "machina(action='messages.get_attachment', params={id: 'att_12345'})",
+    example: "machina(action='imessage.get_attachment', params={id: 'att_12345'})",
   },
 
   // ============== NOTES ==============
@@ -634,10 +634,10 @@ interface ServiceDef {
 
 const services: ServiceDef[] = [
   {
-    name: "messages",
-    displayName: "Apple Messages",
+    name: "imessage",
+    displayName: "iMessage",
     description: "Read and send iMessages via Apple Messages app",
-    prefix: "messages_",
+    prefix: "imessage_",
   },
   {
     name: "whatsapp",
@@ -816,21 +816,15 @@ function describeOperation(dotAction: string): string {
 
 // Generate MCP tools array (single gateway tool)
 function generateTools() {
-  // Count all operations
-  let totalOps = 0;
-  for (const service of services) {
-    totalOps += getServiceOperations(service).length;
-  }
-
-  // Key insight: Show top operations with params inline so LLMs can call without describe
-  // This is the innovation from the Warp/Opus implementation
+  // Show operations with params inline so LLMs can call directly
   const description = [
     "Control your Mac: iMessage, WhatsApp, Notes, Reminders, Contacts.",
-    "Top: messages.send(to, message), messages.read(contact), messages.conversations(),",
-    "whatsapp.chats(), whatsapp.messages(contact), notes.create(title, body).",
-    `+${totalOps - 6} more operations.`,
-    "Quickstart: conversations → read(contact) → send(to, message).",
-    "Use action='describe' for full docs.",
+    "iMessage: imessage.send(to, message), imessage.read(contact), imessage.conversations(), imessage.search(query).",
+    "WhatsApp: whatsapp.chats(), whatsapp.messages(contact), whatsapp.send(to, message), whatsapp.search(query).",
+    "Notes: notes.list(), notes.read(title), notes.create(title, body), notes.search(query).",
+    "Reminders: reminders.list(), reminders.create(title), reminders.complete(title).",
+    "Contacts: contacts.search(name), contacts.get(name).",
+    "Use action='describe' for parameter details.",
   ].join(" ");
 
   return [
@@ -843,7 +837,7 @@ function generateTools() {
           action: {
             type: "string",
             description:
-              "Format: 'service.operation' (e.g., messages.send, whatsapp.chats). Use 'describe' for all operations.",
+              "Format: 'service.operation' (e.g., imessage.send, whatsapp.chats). Use 'describe' for all operations.",
           },
           params: {
             type: "object",
@@ -1612,8 +1606,8 @@ function isoToAppleScriptDate(isoDate: string): string {
 // Operation handlers
 async function executeOperation(action: string, params: Record<string, any>): Promise<string> {
   switch (action) {
-    // ============== MESSAGES ==============
-    case "messages_send": {
+    // ============== IMESSAGE ==============
+    case "imessage_send": {
       if (!params.to) throw new Error("Missing required parameter: to");
       if (!params.message) throw new Error("Missing required parameter: message");
 
@@ -1683,7 +1677,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       );
     }
 
-    case "messages_read": {
+    case "imessage_read": {
       if (!params.contact) throw new Error("Missing required parameter: contact");
 
       // Resolve contact to handle with fuzzy matching for typo tolerance
@@ -1697,7 +1691,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
             message: `No iMessage conversation found for "${params.contact}".`,
             suggestions: resolved.suggestions || [
               "Check the spelling of the contact name",
-              "Use messages.conversations() to see active chats",
+              "Use imessage.conversations() to see active chats",
               "Try the phone number or email directly",
             ],
           },
@@ -1765,7 +1759,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       );
     }
 
-    case "messages_recent": {
+    case "imessage_recent": {
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
       const sql = `SELECT datetime(m.date/1000000000 + 978307200, 'unixepoch', 'localtime') as date,
         m.is_from_me,
@@ -1780,7 +1774,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       return await formatMessagesWithNames(rows);
     }
 
-    case "messages_search": {
+    case "imessage_search": {
       if (!params.query) throw new Error("Missing required parameter: query");
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
       const escapedQuery = escapeSQL(params.query);
@@ -1797,7 +1791,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       return await formatMessagesWithNames(rows);
     }
 
-    case "messages_conversations": {
+    case "imessage_conversations": {
       const limit = Math.min(Math.max(1, params.limit || 20), 100);
       // Get most recent message per handle using subquery for correct last_message
       const sql = `SELECT
@@ -1841,7 +1835,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       return JSON.stringify({ conversations, count: conversations.length }, null, 2);
     }
 
-    case "messages_conversation_context": {
+    case "imessage_conversation_context": {
       if (!params.contact) throw new Error("Missing required parameter: contact");
 
       const days = Math.min(Math.max(1, params.days || 7), 365);
@@ -1858,7 +1852,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
             message: `No iMessage conversation found for "${params.contact}".`,
             suggestions: [
               "Check the spelling of the contact name",
-              "Use messages_conversations to see active chats",
+              "Use imessage_conversations to see active chats",
               "Try the phone number or email directly",
             ],
           },
@@ -2051,7 +2045,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
       return JSON.stringify(response, null, 2);
     }
 
-    case "messages_get_attachment": {
+    case "imessage_get_attachment": {
       if (!params.id) throw new Error("Missing required parameter: id");
 
       // Parse attachment ID (format: att_12345)
@@ -3064,7 +3058,7 @@ async function handleGatewayTool(args: Record<string, unknown>): Promise<MCPTool
   if (!action) {
     // If contact provided without action, assume they want to read messages
     if (params.contact) {
-      const result = await executeOperation("messages_conversation_context", params);
+      const result = await executeOperation("imessage_conversation_context", params);
       return wrapExecutionResult(result);
     }
     return createResponse({
@@ -3075,7 +3069,7 @@ async function handleGatewayTool(args: Record<string, unknown>): Promise<MCPTool
 
   // describe action - returns structured help
   if (action === "describe") {
-    // Describe specific operation: params={operation: 'messages.send'}
+    // Describe specific operation: params={operation: 'imessage.send'}
     if (params.operation) {
       return createResponse({
         operation: params.operation,
@@ -3183,11 +3177,11 @@ function authenticate(req: Request, res: Response, next: NextFunction) {
 const SERVER_INSTRUCTIONS = `
 Machina controls Mac apps: iMessage, WhatsApp, Notes, Reminders, Contacts.
 
-**Quick Start:**
-- Read messages: machina(action='messages.read', params={contact: 'Name'})
-- Send message: machina(action='messages.send', params={to: 'Name', message: '...'})
-- List chats: machina(action='messages.conversations')
-- Search: machina(action='messages.search', params={query: 'keyword'})
+**iMessage:**
+- Read messages: machina(action='imessage.read', params={contact: 'Name'})
+- Send message: machina(action='imessage.send', params={to: 'Name', message: '...'})
+- List chats: machina(action='imessage.conversations')
+- Search: machina(action='imessage.search', params={query: 'keyword'})
 
 **WhatsApp:**
 - List chats: machina(action='whatsapp.chats')
@@ -3197,7 +3191,7 @@ Machina controls Mac apps: iMessage, WhatsApp, Notes, Reminders, Contacts.
 **Pattern:** machina(action='service.operation', params={...})
 **Discovery:** machina(action='describe') shows all operations
 
-Services: messages, whatsapp, notes, reminders, contacts, system
+Services: imessage, whatsapp, notes, reminders, contacts, system
 `.trim();
 
 // Create MCP server
