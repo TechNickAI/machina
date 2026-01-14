@@ -1444,7 +1444,7 @@ async function resolveToIMessageHandle(identifier: string): Promise<IMessageReso
     type: "not_found",
     suggestions: resolved.suggestions || [
       `No contact matching "${trimmed}"`,
-      "Try: messages.conversations() to see recent chats",
+      "Try: imessage.conversations() to see recent chats",
       "Or use phone number/email directly",
     ],
   };
@@ -1852,7 +1852,7 @@ async function executeOperation(action: string, params: Record<string, any>): Pr
             message: `No iMessage conversation found for "${params.contact}".`,
             suggestions: [
               "Check the spelling of the contact name",
-              "Use imessage_conversations to see active chats",
+              "Use imessage.conversations() to see active chats",
               "Try the phone number or email directly",
             ],
           },
@@ -3126,7 +3126,7 @@ async function handleGatewayTool(args: Record<string, unknown>): Promise<MCPTool
     }
     const available = services.map((s) => s.name).join(", ");
     return createErrorResponse(`Unknown action: ${action}`, [
-      "Format: service.operation (e.g., messages.send)",
+      "Format: service.operation (e.g., imessage.send)",
       `Services: ${available}`,
       "Use action='describe' to see all operations",
     ]);

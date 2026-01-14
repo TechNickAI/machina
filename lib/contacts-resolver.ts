@@ -376,7 +376,7 @@ export async function resolveContact(query: string): Promise<ResolveResult> {
     type: "not_found",
     suggestions: [
       `No contact matching "${query}"`,
-      "Try: messages.conversations() to see recent chats",
+      "Try: imessage.conversations() to see recent chats",
       "Try: contacts.search(name='partial name')",
       "Or use phone number/email directly",
     ],
