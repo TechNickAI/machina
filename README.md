@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Machina" width="300">
+</p>
+
 # Machina
 
 **AI's home on your Mac.**
