@@ -2,6 +2,12 @@
   <img src="assets/logo.png" alt="Machina" width="300">
 </p>
 
+[![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)](https://www.apple.com/macos/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-blueviolet)](https://modelcontextprotocol.io/)
+[![GitHub Release](https://img.shields.io/github/v/release/TechNickAI/machina)](https://github.com/TechNickAI/machina/releases)
+[![Built with Claude Code](https://img.shields.io/badge/Built_with-Claude_Code-6B5CE7)](https://claude.ai/code)
+
 # Machina
 
 **AI's home on your Mac.**
